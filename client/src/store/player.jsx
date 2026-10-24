@@ -26,7 +26,7 @@ export function PlayerProvider({ children }) {
   if (!engineRef.current) engineRef.current = new AudioEngine(audio);
   const engine = engineRef.current;
 
-  const [st, setSt] = useState({ queue: [], index: -1 });
+  const [st, setSt] = useState({ queue: [], index: -1, label: '' });
   const stRef = useRef(st);
   const commit = (next) => { stRef.current = next; setSt(next); };
 
@@ -44,15 +44,22 @@ export function PlayerProvider({ children }) {
   const loadId = useRef(0);
   const revokeRef = useRef(null);
 
-  const current = st.index >= 0 ? st.queue[st.index] : null;
+  // Always show the latest title/artist/cover (songs can be edited while queued).
+  const queue = useMemo(() => st.queue.map((q) => (lib.byId.get(q.id) ? { ...lib.byId.get(q.id), qid: q.qid } : q)), [st.queue, lib.byId]);
+  const current = st.index >= 0 ? queue[st.index] || null : null;
+  const currentIdRef = useRef(null);
+  currentIdRef.current = current?.id || null;
+  const durRef = useRef(0);
+  durRef.current = duration || current?.duration || 0;
 
   // ---- load & play a queue index ----
   const playIndex = useCallback(async (i, autoplay = true) => {
-    const { queue } = stRef.current;
+    const { queue, label } = stRef.current;
     const track = queue[i];
     if (!track) return;
     engine.ensure(); // inside the user-gesture call stack
-    commit({ queue, index: i });
+    commit({ queue, index: i, label });
+    libRef.current.beginListen(track.id);
     const id = ++loadId.current;
     setLoading(true);
     setTime(0);
@@ -66,11 +73,7 @@ export function PlayerProvider({ children }) {
       if (autoplay) await audio.play();
     } catch (e) {
       if (id !== loadId.current || e?.name === 'AbortError') return;
-      const offline = !navigator.onLine || !libRef.current.online;
-      libRef.current.toast(
-        offline ? 'This track isn’t available offline. Save it for offline listening while connected.' : 'This track couldn’t be played.',
-        'error'
-      );
+      libRef.current.toast('This song couldn’t be played. The file may be missing or in a format your browser can’t decode.', 'error');
     } finally {
       if (id === loadId.current) setLoading(false);
     }
@@ -97,7 +100,7 @@ export function PlayerProvider({ children }) {
       loadedmetadata: () => Number.isFinite(audio.duration) && setDuration(audio.duration),
       play: () => setPlaying(true),
       pause: () => setPlaying(false),
-      ended: () => advance(1, true),
+      ended: () => { libRef.current.beginListen(null); advance(1, true); },
       waiting: () => setLoading(true),
       playing: () => setLoading(false),
       canplay: () => setLoading(false),
@@ -124,7 +127,7 @@ export function PlayerProvider({ children }) {
   const seek = useCallback((t) => { audio.currentTime = t; setTime(t); }, [audio]);
   const setVolume = (v) => { setVolumeState(v); if (v > 0) setMuted(false); };
 
-  const playQueue = useCallback((tracks, start = 0) => {
+  const playQueue = useCallback((tracks, start = 0, label = '') => {
     if (!tracks.length) return;
     let items = tracks.map(withQid);
     origOrder.current = items.map((t) => t.qid);
@@ -134,7 +137,8 @@ export function PlayerProvider({ children }) {
       items = [first, ...shuffled(items.filter((t) => t !== first))];
       index = 0;
     }
-    commit({ queue: items, index });
+    commit({ queue: items, index, label });
+    stRef.current = { queue: items, index, label };
     playIndex(index);
   }, [playIndex]);
 
@@ -142,7 +146,7 @@ export function PlayerProvider({ children }) {
     const item = withQid(track);
     origOrder.current.push(item.qid);
     const { queue, index } = stRef.current;
-    commit({ queue: [...queue, item], index });
+    commit({ ...stRef.current, queue: [...queue, item], index });
     if (index < 0) playIndex(0, false);
     libRef.current.toast(`Added “${track.title}” to the queue.`);
   }, [playIndex]);
@@ -152,7 +156,7 @@ export function PlayerProvider({ children }) {
     origOrder.current.push(item.qid);
     const { queue, index } = stRef.current;
     const at = index + 1;
-    commit({ queue: [...queue.slice(0, at), item, ...queue.slice(at)], index });
+    commit({ ...stRef.current, queue: [...queue.slice(0, at), item, ...queue.slice(at)], index });
     if (index < 0) playIndex(0, false);
     libRef.current.toast(`“${track.title}” will play next.`);
   }, [playIndex]);
@@ -160,10 +164,10 @@ export function PlayerProvider({ children }) {
   const removeFromQueue = useCallback((i) => {
     const { queue, index } = stRef.current;
     const nq = queue.filter((_, k) => k !== i);
-    if (i < index) commit({ queue: nq, index: index - 1 });
-    else if (i > index) commit({ queue: nq, index });
-    else if (!nq.length) { audio.pause(); audio.removeAttribute('src'); commit({ queue: [], index: -1 }); }
-    else { commit({ queue: nq, index: Math.min(i, nq.length - 1) }); playIndex(Math.min(i, nq.length - 1), !audio.paused); }
+    if (i < index) commit({ ...stRef.current, queue: nq, index: index - 1 });
+    else if (i > index) commit({ ...stRef.current, queue: nq, index });
+    else if (!nq.length) { audio.pause(); audio.removeAttribute('src'); commit({ queue: [], index: -1, label: '' }); }
+    else { commit({ ...stRef.current, queue: nq, index: Math.min(i, nq.length - 1) }); playIndex(Math.min(i, nq.length - 1), !audio.paused); }
   }, [audio, playIndex]);
 
   const moveInQueue = useCallback((from, to) => {
@@ -176,14 +180,14 @@ export function PlayerProvider({ children }) {
     if (index === from) ni = to;
     else if (from < index && to >= index) ni = index - 1;
     else if (from > index && to <= index) ni = index + 1;
-    commit({ queue: nq, index: ni });
+    commit({ ...stRef.current, queue: nq, index: ni });
   }, []);
 
   const clearQueue = useCallback(() => {
     const { queue, index } = stRef.current;
     const cur = queue[index];
     origOrder.current = cur ? [cur.qid] : [];
-    commit({ queue: cur ? [cur] : [], index: cur ? 0 : -1 });
+    commit({ ...stRef.current, queue: cur ? [cur] : [], index: cur ? 0 : -1 });
   }, []);
 
   const toggleShuffle = useCallback(() => {
@@ -196,11 +200,11 @@ export function PlayerProvider({ children }) {
     if (on) {
       origOrder.current = queue.map((t) => t.qid);
       const rest = shuffled(queue.filter((t) => t !== cur));
-      commit({ queue: cur ? [cur, ...rest] : rest, index: cur ? 0 : -1 });
+      commit({ ...stRef.current, queue: cur ? [cur, ...rest] : rest, index: cur ? 0 : -1 });
     } else {
       const pos = new Map(origOrder.current.map((q, i) => [q, i]));
       const nq = queue.slice().sort((a, b) => (pos.get(a.qid) ?? 1e9) - (pos.get(b.qid) ?? 1e9));
-      commit({ queue: nq, index: Math.max(nq.indexOf(cur), 0) });
+      commit({ ...stRef.current, queue: nq, index: Math.max(nq.indexOf(cur), 0) });
     }
   }, []);
 
@@ -209,6 +213,13 @@ export function PlayerProvider({ children }) {
     repeatRef.current = n;
     setRepeat(n);
   }, []);
+
+  // ---- listening stats: one tick per second of actual playback ----
+  useEffect(() => {
+    if (!playing) return undefined;
+    const t = setInterval(() => libRef.current.recordListen(currentIdRef.current, durRef.current), 1000);
+    return () => clearInterval(t);
+  }, [playing]);
 
   // ---- OS media controls (lock screen, headset keys) ----
   useEffect(() => {
@@ -228,10 +239,10 @@ export function PlayerProvider({ children }) {
   }, [current, toggle, prev, next, seek]);
 
   const value = useMemo(() => ({
-    engine, current, queue: st.queue, index: st.index, playing, loading, time, duration, volume, muted, shuffle, repeat,
-    toggle, next, prev, seek, setVolume, toggleMute: () => setMuted((m) => !m), toggleShuffle, cycleRepeat,
+    engine, current, queue, index: st.index, label: st.label, playing, loading, time, duration, volume, muted, shuffle, repeat,
+    toggle, pause: () => audio.pause(), next, prev, seek, setVolume, toggleMute: () => setMuted((m) => !m), toggleShuffle, cycleRepeat,
     playQueue, playIndex, addToQueue, playNext, removeFromQueue, moveInQueue, clearQueue,
-  }), [engine, current, st, playing, loading, time, duration, volume, muted, shuffle, repeat]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [engine, current, queue, st, playing, loading, time, duration, volume, muted, shuffle, repeat]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

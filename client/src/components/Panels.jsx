@@ -1,12 +1,14 @@
 // Right-hand panel: Now playing, Queue and Equalizer.
 import React, { useEffect, useState } from 'react';
 import { usePlayer } from '../store/player.jsx';
+import { useLibrary } from '../store/library.jsx';
 import { EQ_LABELS, PRESETS } from '../audio/engine.js';
 import Visualizer from './Visualizer.jsx';
-import { Cover, Icon, IconButton, fmtTime } from './ui.jsx';
+import { Cover, Icon, IconButton, albumHref, artistHref, fmtTime } from './ui.jsx';
 
 export function NowPlaying() {
   const { current } = usePlayer();
+  const lib = useLibrary();
   if (!current) {
     return (
       <div className="panel-empty">
@@ -17,11 +19,11 @@ export function NowPlaying() {
   }
   return (
     <div className="nowplaying">
-      <Cover src={current.cover} seed={current.albumId ?? current.id} label={current.title} className="big" />
+      <Cover src={current.cover} seed={current.albumKey || current.id} label={current.title} className="big" />
       <h2>{current.title}</h2>
       <p className="muted">
-        {current.artistId ? <a href={`#/artist/${current.artistId}`}>{current.artist}</a> : current.artist}
-        {current.album ? <> · {current.albumId ? <a href={`#/album/${current.albumId}`}>{current.album}</a> : current.album}</> : null}
+        {lib.artistByKey.has(current.artistKey) ? <a href={artistHref(current.artistKey)}>{current.artist}</a> : current.artist}
+        {current.album ? <> · {lib.albumByKey.has(current.albumKey) ? <a href={albumHref(current.albumKey)}>{current.album}</a> : current.album}</> : null}
       </p>
       <Visualizer />
     </div>
@@ -31,7 +33,7 @@ export function NowPlaying() {
 export function Queue() {
   const { queue, index, playIndex, removeFromQueue, moveInQueue, clearQueue } = usePlayer();
   const [drag, setDrag] = useState(null);
-  if (!queue.length) return <div className="panel-empty"><Icon name="queue" size={40} /><p>Your queue is empty. Use “Add to queue” on any track.</p></div>;
+  if (!queue.length) return <div className="panel-empty"><Icon name="queue" size={40} /><p>Your queue is empty. Use “Add to queue” on any song.</p></div>;
   const upcoming = queue.length - index - 1;
   return (
     <div className="queue">
@@ -49,7 +51,7 @@ export function Queue() {
           onDragEnd={() => setDrag(null)}
         >
           <button className="q-main" onClick={() => playIndex(i)}>
-            <Cover src={t.cover} seed={t.albumId ?? t.id} label={t.title} className="thumb" />
+            <Cover src={t.cover} seed={t.albumKey || t.id} label={t.title} className="thumb" />
             <span className="t-text"><span className="t-title">{t.title}</span><span className="t-artist">{t.artist}</span></span>
             <span className="dur">{fmtTime(t.duration)}</span>
           </button>

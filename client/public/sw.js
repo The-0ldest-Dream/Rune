@@ -5,7 +5,7 @@
  * - /api/stream & /api/proxy: never cached here (Range/206 responses). Audio for offline use is stored
  *   in IndexedDB by the app ("Save for offline" / Device files).
  */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL = `rune-shell-${VERSION}`;
 const DATA = `rune-data-${VERSION}`;
 const BASE = new URL(self.registration.scope).pathname; // "/" or "/rune/"

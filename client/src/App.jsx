@@ -1,18 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { STATIC } from './api.js';
 import { LibraryProvider, useLibrary } from './store/library.jsx';
 import { PlayerProvider, usePlayer } from './store/player.jsx';
 import PlayerBar from './components/PlayerBar.jsx';
-import AuthModal from './components/AuthModal.jsx';
+import SearchBox from './components/SearchBox.jsx';
+import EditDialog from './components/EditDialog.jsx';
+import FullScreen from './components/FullScreen.jsx';
 import { Equalizer, NowPlaying, Queue } from './components/Panels.jsx';
-import { Icon, IconButton } from './components/ui.jsx';
+import { Avatar, Icon, IconButton } from './components/ui.jsx';
 import Home from './views/Home.jsx';
 import Search from './views/Search.jsx';
-import Browse from './views/Browse.jsx';
+import ArtistsPage from './views/Artists.jsx';
 import { AlbumPage, ArtistPage } from './views/Detail.jsx';
 import { LocalPage, PlaylistPage, PlaylistsPage } from './views/Library.jsx';
+import VideosPage from './views/Videos.jsx';
+import ProfilePage from './views/Profile.jsx';
 
-/** Tiny hash router: "#/album/12" → { name: 'album', arg: '12' } (hash routes survive static hosting & offline). */
+/** Tiny hash router: "#/artist/coldplay" → { name: 'artist', arg: 'coldplay' } (works on static hosting and offline). */
 function useRoute() {
   const read = () => {
     const [name = '', ...rest] = location.hash.replace(/^#\/?/, '').split('/');
@@ -30,15 +33,15 @@ function useRoute() {
 const NAV = [
   ['home', 'Home', 'home', '#/'],
   ['search', 'Search', 'search', '#/search'],
-  ['albums', 'Albums', 'album', '#/albums'],
   ['artists', 'Artists', 'user', '#/artists'],
   ['library', 'Playlists', 'library', '#/library'],
-  ['local', 'Device', 'upload', '#/local'],
+  ['local', 'Device files', 'music', '#/local'],
+  ['videos', 'Upload file', 'video', '#/videos'],
 ];
 
 function Sidebar({ route }) {
   const lib = useLibrary();
-  const section = route.name === 'playlist' ? 'library' : route.name === 'genre' ? 'search' : route.name;
+  const section = { playlist: 'library', artist: 'artists', album: 'artists' }[route.name] || route.name;
   return (
     <nav className="sidebar" aria-label="Main">
       <a className="brand" href="#/"><img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width="28" height="28" /> Rune</a>
@@ -58,28 +61,14 @@ function Sidebar({ route }) {
   );
 }
 
-function TopBar({ route, openAuth }) {
+function TopBar({ route }) {
   const lib = useLibrary();
-  const [value, setValue] = useState('');
-  useEffect(() => { if (route.name === 'search') setValue(route.arg); }, [route]);
-
-  const onChange = (e) => {
-    const v = e.target.value;
-    setValue(v);
-    const hash = `#/search/${encodeURIComponent(v)}`;
-    route.name === 'search' ? location.replace(hash) : (location.hash = hash);
-  };
-
   return (
     <header className="topbar">
-      <div className="searchbox">
-        <Icon name="search" size={20} />
-        <input type="search" value={value} onChange={onChange} placeholder="Search songs, artists, albums" aria-label="Search" />
-      </div>
-      <span className={`conn ${lib.online ? 'on' : 'off'}`} role="status">{STATIC ? 'Offline-ready' : lib.online ? 'Online' : 'Offline'}</span>
-      {STATIC ? null : lib.user
-        ? <button className="btn ghost" onClick={lib.signOut} title={lib.user.email}>Sign out ({lib.user.name})</button>
-        : <button className="btn ghost" onClick={openAuth}>Sign in</button>}
+      <SearchBox route={route} />
+      <a className="profile-link" href="#/profile" aria-label="Profile" title={lib.profile.name || 'Profile'}>
+        <Avatar url={lib.avatarUrl} name={lib.profile.name} size={40} />
+      </a>
     </header>
   );
 }
@@ -87,7 +76,7 @@ function TopBar({ route, openAuth }) {
 function Toast() {
   const { notice, setNotice } = useLibrary();
   useEffect(() => {
-    if (!notice) return;
+    if (!notice) return undefined;
     const t = setTimeout(() => setNotice(null), 4500);
     return () => clearTimeout(t);
   }, [notice, setNotice]);
@@ -95,17 +84,17 @@ function Toast() {
   return <div className={`toast ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</div>;
 }
 
-function View({ route, openAuth }) {
+function View({ route }) {
   switch (route.name) {
     case 'search': return <Search q={route.arg} />;
-    case 'genre': return <Search q="" genre={route.arg} />;
-    case 'albums': return <Browse kind="albums" />;
-    case 'artists': return <Browse kind="artists" />;
-    case 'album': return <AlbumPage key={route.arg} id={route.arg} />;
+    case 'artists': return <ArtistsPage />;
     case 'artist': return <ArtistPage key={route.arg} id={route.arg} />;
-    case 'library': return <PlaylistsPage openAuth={openAuth} />;
+    case 'album': return <AlbumPage key={route.arg} id={route.arg} />;
+    case 'library': return <PlaylistsPage />;
     case 'playlist': return <PlaylistPage id={route.arg} />;
     case 'local': return <LocalPage />;
+    case 'videos': return <VideosPage openId={route.arg} />;
+    case 'profile': return <ProfilePage />;
     default: return <Home />;
   }
 }
@@ -114,23 +103,35 @@ function Shell() {
   const route = useRoute();
   const { toggle } = usePlayer();
   const [panel, setPanel] = useState({ open: window.innerWidth > 1100, tab: 'now' });
-  const [auth, setAuth] = useState(false);
+  const [full, setFull] = useState(false);
 
+  // Space = play/pause (unless typing or focused on a control)
   useEffect(() => {
     const onKey = (e) => {
-      if (e.code === 'Space' && !/^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(document.activeElement?.tagName) ) { e.preventDefault(); toggle(); }
+      if (e.code === 'Space' && !/^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(document.activeElement?.tagName)) { e.preventDefault(); toggle(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [toggle]);
+
+  // Full screen: our overlay, plus the browser's real full-screen mode when allowed.
+  useEffect(() => {
+    if (full) document.documentElement.requestFullscreen?.().catch(() => {});
+    else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  }, [full]);
+  useEffect(() => {
+    const on = () => { if (!document.fullscreenElement) setFull(false); };
+    document.addEventListener('fullscreenchange', on);
+    return () => document.removeEventListener('fullscreenchange', on);
+  }, []);
 
   const tabs = [['now', 'Now playing'], ['queue', 'Queue'], ['eq', 'Equalizer']];
   return (
     <div className={`app ${panel.open ? 'with-panel' : ''}`}>
       <Sidebar route={route} />
       <main className="main">
-        <TopBar route={route} openAuth={() => setAuth(true)} />
-        <div className="content"><View route={route} openAuth={() => setAuth(true)} /></div>
+        <TopBar route={route} />
+        <div className="content"><View route={route} /></div>
       </main>
       {panel.open && (
         <aside className="side" aria-label="Player panel">
@@ -145,9 +146,10 @@ function Shell() {
           </div>
         </aside>
       )}
-      <PlayerBar panel={panel} setPanel={setPanel} />
+      {full && <FullScreen onClose={() => setFull(false)} />}
+      <PlayerBar panel={panel} setPanel={setPanel} full={full} onFull={() => setFull((f) => !f)} />
       <Toast />
-      {auth && <AuthModal onClose={() => setAuth(false)} />}
+      <EditDialog />
     </div>
   );
 }

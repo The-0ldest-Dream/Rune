@@ -1,91 +1,47 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { qs, toTrack, useApi, usePaged } from '../api.js';
+import React, { useMemo } from 'react';
 import { useLibrary } from '../store/library.jsx';
-import { AlbumCard, ArtistCard, Status, TrackList } from '../components/ui.jsx';
+import { matches } from '../components/SearchBox.jsx';
+import { ArtistCard, Cover, Status, TrackList } from '../components/ui.jsx';
+import { fmtTime } from '../components/ui.jsx';
 
-export default function Search({ q, genre: genreProp = '' }) {
+export default function Search({ q }) {
   const lib = useLibrary();
-  const [genre, setGenre] = useState(genreProp);
-  const [source, setSource] = useState('library');
-  const [debounced, setDebounced] = useState(q);
+  const needle = q.trim().toLowerCase();
 
-  useEffect(() => setGenre(genreProp), [genreProp]);
-  useEffect(() => { const t = setTimeout(() => setDebounced(q), 250); return () => clearTimeout(t); }, [q]);
+  const songs = useMemo(() => (needle ? lib.tracks.filter((t) => matches(t, needle)) : []), [lib.tracks, needle]);
+  const artists = useMemo(() => (needle ? lib.artists.filter((a) => a.name.toLowerCase().includes(needle)) : []), [lib.artists, needle]);
+  const playlists = useMemo(() => (needle ? lib.playlists.filter((p) => p.name.toLowerCase().includes(needle)) : []), [lib.playlists, needle]);
+  const videos = useMemo(() => (needle ? lib.videos.filter((v) => v.title.toLowerCase().includes(needle)) : []), [lib.videos, needle]);
 
-  const genres = useApi(lib.online ? '/genres' : null);
-  const active = lib.online && source === 'library' && (debounced || genre);
-  const tracks = usePaged(active ? `/tracks?${qs({ q: debounced, genre })}` : null, 30);
-  const artists = useApi(active && !genre ? `/artists?${qs({ q: debounced, limit: 6 })}` : null);
-  const albums = useApi(active ? `/albums?${qs({ q: debounced, genre, limit: 6 })}` : null);
-  const jamendo = useApi(lib.online && source === 'jamendo' ? `/jamendo/search?${qs({ q: debounced })}` : null);
-
-  // Offline: search what is stored on this device and in playlists.
-  const offlineHits = useMemo(() => {
-    if (lib.online) return [];
-    const needle = debounced.toLowerCase();
-    const pool = new Map();
-    [...lib.files, ...lib.playlists.flatMap((p) => p.tracks)].forEach((t) => pool.set(t.id, t));
-    return Array.from(pool.values()).filter((t) =>
-      !needle || `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(needle));
-  }, [lib.online, lib.files, lib.playlists, debounced]);
-
-  const trackItems = useMemo(() => tracks.items.map(toTrack), [tracks.items]);
+  if (!needle) {
+    return (
+      <>
+        <h1>Search</h1>
+        <p className="muted">Search your songs, artists, playlists and music videos. Everything is searched on this device, so it works offline.</p>
+      </>
+    );
+  }
+  const none = !songs.length && !artists.length && !playlists.length && !videos.length;
 
   return (
     <>
-      <div className="filters">
-        {lib.online && (
-          <label className="field inline">
-            <span>Genre</span>
-            <select value={genre} onChange={(e) => setGenre(e.target.value)} disabled={source !== 'library'}>
-              <option value="">All genres</option>
-              {(genres.data || []).filter((g) => g.name).map((g) => <option key={g.name}>{g.name}</option>)}
-            </select>
-          </label>
-        )}
-        {lib.online && lib.features.jamendo && (
-          <div className="seg" role="group" aria-label="Source">
-            <button className={source === 'library' ? 'on' : ''} onClick={() => setSource('library')}>Library</button>
-            <button className={source === 'jamendo' ? 'on' : ''} onClick={() => setSource('jamendo')}>Jamendo</button>
-          </div>
-        )}
-      </div>
-
-      {!lib.online && (
-        <>
-          <h2>On this device {debounced && <span className="muted">· “{debounced}”</span>}</h2>
-          <p className="muted">You’re offline, so results come from device files, saved tracks and your playlists.</p>
-          <TrackList tracks={offlineHits} emptyText="Nothing on this device matches." />
-        </>
+      <h1>Results for “{q.trim()}”</h1>
+      {none && <Status empty emptyText="Nothing on this device matches your search." />}
+      {artists.length > 0 && <section><h2>Artists</h2><div className="grid">{artists.map((a) => <ArtistCard key={a.key} artist={a} />)}</div></section>}
+      {songs.length > 0 && <section><h2>Songs <span className="muted">· {songs.length}</span></h2><TrackList tracks={songs} label="Search results" /></section>}
+      {playlists.length > 0 && (
+        <section><h2>Playlists</h2>
+          <div className="grid">{playlists.map((p) => (
+            <a key={p.id} className="card" href={`#/playlist/${p.id}`}><Cover src={p.cover} seed={p.id} label={p.name} /><strong>{p.name}</strong><span className="muted">{p.tracks.length} songs</span></a>
+          ))}</div>
+        </section>
       )}
-
-      {lib.online && source === 'jamendo' && (
-        <>
-          <h2>Jamendo {debounced ? `· “${debounced}”` : '· trending this week'}</h2>
-          <Status loading={jamendo.loading} error={jamendo.error} onRetry={jamendo.reload} />
-          {jamendo.data && <TrackList tracks={jamendo.data.items} emptyText="No Jamendo tracks found." />}
-        </>
-      )}
-
-      {lib.online && source === 'library' && !active && (
-        <div className="status muted">Type in the search bar or pick a genre to start exploring.</div>
-      )}
-
-      {active && (
-        <>
-          {artists.data?.items.length > 0 && (
-            <section><h2>Artists</h2><div className="grid">{artists.data.items.map((a) => <ArtistCard key={a.id} artist={a} />)}</div></section>
-          )}
-          {albums.data?.items.length > 0 && (
-            <section><h2>Albums</h2><div className="grid">{albums.data.items.map((a) => <AlbumCard key={a.id} album={a} />)}</div></section>
-          )}
-          <section>
-            <h2>Tracks {tracks.total > 0 && <span className="muted">· {tracks.total.toLocaleString()}</span>}</h2>
-            <TrackList tracks={trackItems} emptyText={tracks.loading ? '' : 'No tracks match your search.'} />
-            <Status loading={tracks.loading} error={tracks.error} onRetry={tracks.reload} />
-            {tracks.hasMore && !tracks.loading && <button className="btn ghost center" onClick={tracks.more}>Show more</button>}
-          </section>
-        </>
+      {videos.length > 0 && (
+        <section><h2>Music videos</h2>
+          <div className="grid">{videos.map((v) => (
+            <a key={v.id} className="card" href={`#/videos/${v.id}`}><Cover src={v.poster} seed={v.id} label={v.title} /><strong>{v.title}</strong><span className="muted">{fmtTime(v.duration)}</span></a>
+          ))}</div>
+        </section>
       )}
     </>
   );

@@ -1,71 +1,63 @@
-// Album and artist pages.
-import React, { useMemo } from 'react';
-import { coverUrl, STATIC, toTrack, useApi } from '../api.js';
+// Artist and album pages. Albums are reached through their artist.
+import React from 'react';
 import { useLibrary } from '../store/library.jsx';
 import { usePlayer } from '../store/player.jsx';
-import { AlbumCard, Cover, Icon, Status, TrackList } from '../components/ui.jsx';
+import { CoverPicker } from '../components/EditDialog.jsx';
+import { AlbumCard, Cover, Icon, Status, TrackList, artistHref } from '../components/ui.jsx';
 
-export function AlbumPage({ id }) {
-  const { data, loading, error, reload } = useApi(`/albums/${id}`);
-  const { playQueue, toggleShuffle, shuffle } = usePlayer();
+const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+export function ArtistPage({ id }) {
   const lib = useLibrary();
-  const tracks = useMemo(() => (data ? data.tracks.map(toTrack) : []), [data]);
-  if (!data) return <Status loading={loading} error={error} onRetry={reload} />;
-  const missing = tracks.filter((t) => !lib.isStored(t.id));
-
+  const { playQueue } = usePlayer();
+  const a = lib.artistByKey.get(id);
+  if (!a) return <Status empty emptyText={lib.ready ? 'This artist isn’t in your library (artists need two or more songs).' : 'Loading…'} />;
+  const ids = a.tracks.map((t) => t.id);
   return (
     <>
       <header className="hero">
-        <Cover src={coverUrl(data.id)} seed={data.id} label={data.title} className="hero-cover" />
+        <Cover round src={a.cover} seed={a.key} label={a.name} className="hero-cover" />
         <div>
-          <span className="muted">Album</span>
-          <h1>{data.title}</h1>
-          <p className="muted"><a href={`#/artist/${data.artist_id}`}>{data.artist}</a>{data.year ? ` · ${data.year}` : ''} · {tracks.length} tracks</p>
+          <span className="muted">Artist</span>
+          <h1>{a.name}</h1>
+          <p className="muted">{count(a.albums.length, 'album', 'albums')} · {count(a.tracks.length, 'song', 'songs')}</p>
         </div>
       </header>
       <div className="actions">
-        <button className="play-btn big" aria-label="Play album" onClick={() => playQueue(tracks)}><Icon name="play" size={28} /></button>
-        <button className={`btn ghost ${shuffle ? 'on' : ''}`} onClick={() => { if (!shuffle) toggleShuffle(); playQueue(tracks, Math.floor(Math.random() * tracks.length)); }}>
-          <Icon name="shuffle" size={16} /> Shuffle play
-        </button>
-        {missing.length > 0 && lib.online && !STATIC && (
-          <button className="btn ghost" onClick={() => missing.forEach((t) => lib.saveOffline(t))}>
-            <Icon name="download" size={16} /> Save album offline
-          </button>
-        )}
+        <button className="play-btn big" aria-label={`Play ${a.name}`} onClick={() => playQueue(a.tracks, 0, a.name)}><Icon name="play" size={28} /></button>
+        <button className="btn ghost" onClick={() => lib.openEdit(ids, { artist: a.name })}><Icon name="edit" size={16} /> Rename artist</button>
+        <CoverPicker kind="artist" id={a.key} />
       </div>
-      <TrackList tracks={tracks} showAlbum={false} />
+      {a.albums.length > 0 && <section><h2>Albums</h2><div className="grid">{a.albums.map((al) => <AlbumCard key={al.key} album={al} />)}</div></section>}
+      <section><h2>Songs</h2><TrackList tracks={a.tracks} label={a.name} /></section>
     </>
   );
 }
 
-export function ArtistPage({ id }) {
-  const { data, loading, error, reload } = useApi(`/artists/${id}`);
+export function AlbumPage({ id }) {
+  const lib = useLibrary();
   const { playQueue } = usePlayer();
-  const tracks = useMemo(() => (data ? data.tracks.map(toTrack) : []), [data]);
-  if (!data) return <Status loading={loading} error={error} onRetry={reload} />;
-
+  const al = lib.albumByKey.get(id);
+  if (!al) return <Status empty emptyText={lib.ready ? 'This album isn’t in your library (albums need two or more songs).' : 'Loading…'} />;
+  const ids = al.tracks.map((t) => t.id);
   return (
     <>
       <header className="hero">
-        <Cover round seed={data.id} label={data.name} className="hero-cover" />
+        <Cover src={al.cover} seed={al.key} label={al.title} className="hero-cover" />
         <div>
-          <span className="muted">Artist</span>
-          <h1>{data.name}</h1>
-          <p className="muted">{data.genre} · {data.albums.length} albums · {tracks.length} tracks</p>
+          <span className="muted">Album</span>
+          <h1>{al.title}</h1>
+          <p className="muted">
+            {lib.artistByKey.has(al.artistKey) ? <a href={artistHref(al.artistKey)}>{al.artist}</a> : al.artist} · {count(al.tracks.length, 'song', 'songs')}
+          </p>
         </div>
       </header>
       <div className="actions">
-        <button className="play-btn big" aria-label={`Play ${data.name}`} onClick={() => playQueue(tracks)}><Icon name="play" size={28} /></button>
+        <button className="play-btn big" aria-label="Play album" onClick={() => playQueue(al.tracks, 0, al.title)}><Icon name="play" size={28} /></button>
+        <button className="btn ghost" onClick={() => lib.openEdit(ids, { album: al.title })}><Icon name="edit" size={16} /> Rename album</button>
+        <CoverPicker kind="album" id={al.key} />
       </div>
-      <section>
-        <h2>Popular tracks</h2>
-        <TrackList tracks={tracks.slice(0, 10)} />
-      </section>
-      <section>
-        <h2>Discography</h2>
-        <div className="grid">{data.albums.map((a) => <AlbumCard key={a.id} album={{ ...a, artist: data.name }} />)}</div>
-      </section>
+      <TrackList tracks={al.tracks} showAlbum={false} label={al.title} />
     </>
   );
 }

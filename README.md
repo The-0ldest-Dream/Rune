@@ -1,148 +1,60 @@
 # Rune
 
-A Spotify-inspired music streaming web app that works **online and offline**: stream from a built-in catalogue of thousands of tracks, play your own audio files with no connection, and shape the sound with a 10-band equalizer.
+A private, offline-first music player that runs entirely in your browser. Add your own songs and music videos, and Rune reads their cover art and tags, groups them into artists and albums, tracks what you listen to, and lets you shape the sound with an equalizer. Nothing is uploaded anywhere — your files stay in your browser's storage.
 
-> Rune is an independent project inspired by the layout and interaction patterns of mainstream streaming apps. It is not affiliated with or endorsed by Spotify. Social features (likes, sharing, following, Jam, Blend) are intentionally not included.
+> Rune is an independent project inspired by the layout of mainstream music apps. It is not affiliated with Spotify. There are no social features.
 
 ## Features
 
-| Area | What you get |
-| --- | --- |
-| Player | Play/pause, next/previous, seek, volume, shuffle, repeat (off / all / one), keyboard Space, OS media keys & lock-screen controls |
-| Online streaming | Express API streams audio with HTTP Range support (seeking works); catalogue of ~4,500 tracks, ~450 albums, 140 artists in SQLite |
-| Offline | Drop in local audio files (stored in IndexedDB), **Save for offline** on any streamed track, offline playlists, service-worker app shell, automatic Online/Offline detection |
-| Library | Search across tracks/albums/artists, genre filter, album & artist pages, infinite "show more" browsing |
-| Playlists | Create, rename, delete, add/remove tracks; stored on-device, optional account backup/sync |
-| Queue | Add to queue, play next, remove, drag to reorder, clear |
-| Equalizer | Bass / Mid / Treble, 10-band graphic EQ (31 Hz – 16 kHz), preamp, 8 presets, on/off bypass, safety limiter, settings remembered |
-| Visualizer | Live frequency bars from the audio analyser |
-| Accounts | Optional email/password (scrypt + JWT) – only used to sync playlists (server version) |
-| Responsive | Desktop three-pane layout; mobile bottom navigation and overlay panels |
+- **Your library** – add songs (MP3, FLAC, OGG/Opus, M4A, WAV…) by dragging files or choosing a folder. Embedded **cover art, title, artist, album and track number** are read automatically.
+- **Auto artists & albums** – a song group becomes an **artist** (or **album**) once two or more songs share the same artist (and album). Albums are opened from their artist's page. Songs with no artist stay in *Device files* until you edit them.
+- **Edit info & covers** – fix title/artist/album for one song or many at once (use *Select*), and set your own cover image for any **song, album, artist or playlist**.
+- **Playlists** – create, rename, delete, add/remove songs, custom cover.
+- **Music videos** – the **Upload file** tab stores videos (MP4/WebM work everywhere) and plays them in a viewer.
+- **Search** – the top bar shows your songs and **recent searches** as you focus it, and searches songs, artists, playlists and videos — all on-device, so it works offline.
+- **Full-screen player** – big cover (or visualizer), shown with the normal controls; also enters the browser's real full-screen mode.
+- **Profile** – photo, name and username, plus a **top-10 songs** bar chart of your listening time. The Home page greets you by name, shows your top playlists, top albums and most-played songs.
+- **Player** – shuffle, repeat, queue (drag to reorder), media keys, 10-band **equalizer** with bass/mid/treble, presets and a live visualizer.
+- **Offline** – installable PWA; the app works with no connection after the first visit.
 
-## Quick start
+## Run it
 
-Requirements: **Node.js 22.13 or newer** (the API uses the built-in `node:sqlite` module, so there is no native build step).
+Requirements: Node.js 20 or newer.
 
 ```bash
-git clone <your-repo-url> rune && cd rune
-npm install            # installs server + client workspaces
-cp .env.example .env   # optional in development
-npm run dev            # API on :3001, web app on http://localhost:5173
+npm install
+npm run dev        # http://localhost:5173
+npm run build      # production build in client/dist
+npm test           # unit tests (tag reader, grouping)
 ```
 
-On first start the server creates `server/data/rune.db` and seeds the demo catalogue.
+## Deploy to GitHub Pages
 
-### Production
+The workflow `.github/workflows/pages.yml` builds and publishes on every push to `main`. One-time setup: **Settings → Pages → Build and deployment → Source: GitHub Actions**. The site appears at `https://<your-username>.github.io/<repo-name>/`.
 
-```bash
-npm run build          # builds client/dist
-NODE_ENV=production JWT_SECRET=$(openssl rand -hex 32) npm start
-```
+## How data is stored
 
-The Express server serves the built client and the API from the same origin (default port 3001). Put it behind HTTPS (required for service workers and installable PWA outside `localhost`).
-
-### Tests
-
-```bash
-npm test               # server unit tests (seed, audio synth, auth, scanner)
-```
-
-## Static version (GitHub Pages)
-
-Rune also builds as a **100% in-browser site** – no server needed – so it can be hosted for free on GitHub Pages:
-
-```bash
-npm run build:static   # outputs client/dist, ready to host on any static host
-```
-
-In this mode the same ~4,700-track catalogue is generated in the browser, demo songs are synthesised on-device, and local files, playlists, the queue, the equalizer, the visualizer and the offline app shell all work. The server-only features are switched off: accounts / playlist sync, files in `server/media`, and Jamendo.
-
-**Deploy automatically:** the included workflow `.github/workflows/pages.yml` publishes the site on every push to `main`. One-time setup: repository **Settings → Pages → Build and deployment → Source: GitHub Actions**. The site appears at `https://<your-username>.github.io/<repo-name>/`.
-
-To try it locally: `npm run dev:static` (hot-reloading dev server) or `npm run build:static` and serve `client/dist` with any static file server. The build targets the `/rune/` sub-path unless you set `BASE_PATH`.
-
-## About the demo audio
-
-To keep the repository free of copyrighted music, the catalogue metadata is generated by `server/src/seed.js` and each demo track is a deterministic 30-second melody synthesised on request by `server/src/demoAudio.js` (style depends on genre). That makes every track playable and the equalizer clearly audible, with zero assets.
-
-To use real music, pick any of these (they can be mixed):
-
-1. **Your own files on the server** – put audio under `server/media/` as `Artist/Album/01 - Title.mp3` (or `Artist - Title.mp3`). They are scanned on start and via `POST /api/library/rescan`, and appear in the catalogue and streaming endpoint.
-2. **Your own files in the browser** – open *Device files* and drop files in; they work completely offline.
-3. **Jamendo** (free Creative-Commons music) – create a client id at <https://devportal.jamendo.com>, set `JAMENDO_CLIENT_ID` in `.env`, and a *Jamendo* source toggle appears on the Search page. Audio is proxied through `/api/proxy` (allow-listed to `jamendo.com`) so it can pass through the equalizer.
-
-Only stream or store music you have the right to use.
-
-## Configuration
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `PORT` | `3001` | API / production server port |
-| `JWT_SECRET` | dev value | **Required in production.** Signs login tokens |
-| `DB_FILE` | `server/data/rune.db` | SQLite file |
-| `MEDIA_DIR` | `server/media` | Folder scanned for audio files |
-| `JAMENDO_CLIENT_ID` | – | Enables the Jamendo source |
-| `CORS_ORIGIN` | – | Only if the client is hosted on another origin |
+Everything lives in your browser (IndexedDB + localStorage): song and video files, covers, playlists, profile and listening stats. Clearing site data erases it, and it is not shared between browsers or devices.
 
 ## Project structure
 
 ```
-server/
-  src/
-    index.js          boot: open DB → seed → scan media → listen
-    app.js            Express app, static client hosting, error handler
-    config.js         .env loading (Node's built-in loader)
-    db.js             schema + transaction helper (node:sqlite)
-    catalogueData.js  pure catalogue generator (shared with the static build)
-    seed.js           writes the catalogue into SQLite (CLI: npm run seed)
-    demoSynth.js      pure demo-song synthesiser (shared with the static build)
-    demoAudio.js      server wrapper + cache for demo WAVs
-    cover.js          generated album-art SVGs (shared)
-    scanner.js        MEDIA_DIR → catalogue
-    auth.js           scrypt passwords + HS256 tokens (no extra deps)
-    routes/           library · stream (+proxy) · jamendo · account
-  test/               node:test unit tests
-client/
-  public/             sw.js (offline), manifest, icon
-  src/
-    api.js            fetch wrapper, useApi / usePaged hooks
-    idb.js            IndexedDB helper
-    audio/engine.js   Web Audio graph: EQ, limiter, analyser
-    store/            library.jsx (files, playlists, online state, account)
-                      player.jsx  (audio element, queue, controls)
-    components/       PlayerBar, Panels (now playing/queue/EQ), Visualizer, ui, AuthModal
-    views/            Home, Search, Browse, Detail (album/artist), Library (playlists/device files)
+client/src/
+  tags.js           ID3 / FLAC / Ogg / MP4 tag + cover-art reader (no dependencies)
+  util.js           artist/album grouping, ranking, formatting
+  idb.js            IndexedDB helper
+  audio/engine.js   Web Audio graph: EQ, limiter, analyser
+  store/            library.jsx (files, covers, playlists, profile, stats) · player.jsx (queue, playback)
+  components/       PlayerBar, FullScreen, SearchBox, EditDialog, Panels, Visualizer, ui
+  views/            Home, Search, Artists, Detail (artist/album), Library (playlists, device files), Videos, Profile
+client/test/        node:test unit tests
 ```
 
-## API overview
+## Notes
 
-| Method & path | Description |
-| --- | --- |
-| `GET /api/health` | Liveness + feature flags |
-| `GET /api/tracks?q=&genre=&artist=&album=&sort=&limit=&offset=` | Search / list tracks → `{ items, total }` |
-| `GET /api/albums`, `/api/albums/:id` | Albums (with tracks) |
-| `GET /api/artists`, `/api/artists/:id` | Artists (with albums and tracks) |
-| `GET /api/genres` | Genre list with counts |
-| `GET /api/stream/:id` | Audio stream, supports `Range` |
-| `GET /api/cover/:albumId.svg` | Generated cover art |
-| `GET /api/jamendo/search?q=` | Jamendo results (needs `JAMENDO_CLIENT_ID`) |
-| `POST /api/auth/register`, `/api/auth/login`, `GET /api/auth/me` | Optional accounts |
-| `GET/PUT /api/me/playlists` | Playlist backup (auth) |
-| `POST /api/library/rescan` | Re-scan `MEDIA_DIR` |
-
-## How offline mode works
-
-- **App shell**: `public/sw.js` caches the built app and previously fetched API/cover responses, so you can browse what you've seen.
-- **Audio**: browsers can't cache `Range` responses reliably, so audio is stored as blobs in IndexedDB — via *Device files* or *Save for offline*. The player always prefers a stored copy over the network.
-- **Playlists** store track metadata snapshots, so they open and play (stored tracks) without the server.
-- The top bar shows **Online / Offline** based on the browser and a 30-second server heartbeat. Search switches to on-device results when offline.
-
-## Browser support & notes
-
-- Current Chrome, Edge, Firefox and Safari. The equalizer uses the Web Audio API; audio must be same-origin (or a blob), which is why Jamendo goes through the proxy and the Vite dev server proxies `/api`.
-- Browsers start audio contexts only after a user gesture; the first Play click initialises the equalizer.
-- Local file metadata comes from file names (`Artist - Title.mp3`); embedded ID3 tags are not parsed to keep the bundle small.
-- Auth is deliberately minimal (no email verification or password reset). Add those before exposing publicly.
+- Listening time counts seconds actually played; a "play" counts after about 30 seconds (or 60% of a short song).
+- Videos aren't routed through the equalizer. MKV/AVI usually can't be played by browsers.
+- Only add music and videos you have the right to use.
 
 ## License
 

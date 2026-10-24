@@ -2,7 +2,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { usePlayer } from '../store/player.jsx';
 import { useLibrary } from '../store/library.jsx';
-import { coverUrl } from '../api.js';
 
 const PATHS = {
   play: 'M8 5v14l11-7z',
@@ -30,6 +29,12 @@ const PATHS = {
   more: 'M6 10a2 2 0 100 4 2 2 0 000-4zm12 0a2 2 0 100 4 2 2 0 000-4zm-6 0a2 2 0 100 4 2 2 0 000-4z',
   album: 'M12 2a10 10 0 100 20 10 10 0 000-20zm0 14a4 4 0 110-8 4 4 0 010 8zm0-5.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z',
   panel: 'M3 4h18v16H3V4zm12 2v12h4V6h-4z',
+  edit: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
+  expand: 'M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z',
+  shrink: 'M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z',
+  image: 'M21 19V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z',
+  video: 'M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z',
+  history: 'M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 117 7 6.9 6.9 0 01-4.9-2.1l-1.42 1.42A8.9 8.9 0 0013 21a9 9 0 000-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8z',
 };
 
 export function Icon({ name, size = 20, className = '' }) {
@@ -71,17 +76,8 @@ export function Cover({ src, seed = '', round = false, label = '', className = '
   );
 }
 
-export function Status({ loading, error, onRetry, empty, emptyText }) {
+export function Status({ loading, empty, emptyText }) {
   if (loading) return <div className="status" role="status"><span className="spinner" /> Loading…</div>;
-  if (error) {
-    return (
-      <div className="status error" role="alert">
-        <p>{error.offline ? 'You’re offline.' : error.message}</p>
-        {error.offline && <p className="muted">Device files, saved tracks and playlists are still available.</p>}
-        {onRetry && <button className="btn" onClick={onRetry}>Try again</button>}
-      </div>
-    );
-  }
   if (empty) return <div className="status muted">{emptyText || 'Nothing here yet.'}</div>;
   return null;
 }
@@ -90,8 +86,11 @@ export function Eq({ active }) {
   return <span className={`bars ${active ? 'live' : ''}`} aria-hidden="true"><i /><i /><i /></span>;
 }
 
-/** ⋯ menu for a track: queue actions, playlists, offline copy and optional removal. */
-export function TrackMenu({ track, onRemove }) {
+export const albumHref = (key) => `#/album/${encodeURIComponent(key)}`;
+export const artistHref = (key) => `#/artist/${encodeURIComponent(key)}`;
+
+/** ⋯ menu for a song: queue actions, playlists, edit info and optional removal. */
+export function TrackMenu({ track, onRemove, removeLabel = 'Remove' }) {
   const { playNext, addToQueue } = usePlayer();
   const lib = useLibrary();
   const [open, setOpen] = useState(false);
@@ -99,7 +98,7 @@ export function TrackMenu({ track, onRemove }) {
   const ref = useRef(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     const close = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
     const esc = (e) => e.key === 'Escape' && setOpen(false);
     document.addEventListener('mousedown', close);
@@ -108,8 +107,6 @@ export function TrackMenu({ track, onRemove }) {
   }, [open]);
 
   const done = (fn) => () => { fn(); setOpen(false); setView('main'); };
-  const stored = lib.isStored(track.id);
-  const canSave = track.kind !== 'local' && !!track.src && !track.src.startsWith('demo:'); // demo songs are generated on-device, nothing to download
 
   return (
     <div className="menu-wrap" ref={ref} onClick={(e) => e.stopPropagation()}>
@@ -121,21 +118,17 @@ export function TrackMenu({ track, onRemove }) {
               <button role="menuitem" onClick={done(() => playNext(track))}>Play next</button>
               <button role="menuitem" onClick={done(() => addToQueue(track))}>Add to queue</button>
               <button role="menuitem" onClick={() => setView('playlists')}>Add to playlist…</button>
-              {canSave && (
-                stored && track.kind === 'cached'
-                  ? <button role="menuitem" onClick={done(() => lib.removeFile(track.id))}>Remove offline copy</button>
-                  : !stored && <button role="menuitem" onClick={done(() => lib.saveOffline(track))}>Save for offline</button>
-              )}
-              {onRemove && <button role="menuitem" className="danger" onClick={done(onRemove)}>Remove</button>}
+              <button role="menuitem" onClick={done(() => lib.openEdit([track.id]))}>Edit info &amp; cover</button>
+              {onRemove && <button role="menuitem" className="danger" onClick={done(onRemove)}>{removeLabel}</button>}
             </>
           ) : (
             <>
               <button role="menuitem" onClick={() => setView('main')}>‹ Back</button>
-              <button role="menuitem" onClick={done(() => { const p = lib.createPlaylist(`Playlist ${lib.playlists.length + 1}`, [track]); lib.toast(`Created “${p.name}”.`); })}>
+              <button role="menuitem" onClick={done(() => { const p = lib.createPlaylist(`Playlist ${lib.playlists.length + 1}`, [track.id]); lib.toast(`Created “${p.name}”.`); })}>
                 + New playlist
               </button>
               {lib.playlists.map((p) => (
-                <button key={p.id} role="menuitem" onClick={done(() => { lib.addToPlaylist(p.id, track); lib.toast(`Added to “${p.name}”.`); })}>
+                <button key={p.id} role="menuitem" onClick={done(() => { lib.addToPlaylist(p.id, track.id); lib.toast(`Added to “${p.name}”.`); })}>
                   {p.name}{p.tracks.some((t) => t.id === track.id) ? ' ✓' : ''}
                 </button>
               ))}
@@ -147,39 +140,44 @@ export function TrackMenu({ track, onRemove }) {
   );
 }
 
-export function TrackList({ tracks, onRemove, showAlbum = true, emptyText }) {
+/** Song table. `label` names the queue's source (shown in full-screen view). */
+export function TrackList({ tracks, onRemove, removeLabel, showAlbum = true, emptyText, label = '', selectable = false, selected, onToggle }) {
   const { playQueue, current, playing } = usePlayer();
   const lib = useLibrary();
-  if (!tracks.length) return <Status empty emptyText={emptyText || 'No tracks to show.'} />;
+  if (!tracks.length) return <Status empty emptyText={emptyText || 'No songs to show.'} />;
   return (
-    <div className="tracklist" role="table" aria-label="Tracks">
+    <div className="tracklist" role="table" aria-label="Songs">
       {tracks.map((t, i) => {
         const isCur = current?.id === t.id;
+        const act = () => (selectable ? onToggle(t.id) : playQueue(tracks, i, label));
         return (
           <div
             key={`${t.id}-${i}`} role="row" tabIndex={0}
-            className={`track ${isCur ? 'current' : ''} ${showAlbum ? '' : 'no-album'}`}
-            onClick={() => playQueue(tracks, i)}
-            onKeyDown={(e) => { if (e.key === 'Enter') playQueue(tracks, i); }}
+            className={`track ${isCur ? 'current' : ''} ${showAlbum ? '' : 'no-album'} ${selectable && selected?.has(t.id) ? 'selected' : ''}`}
+            onClick={act} onKeyDown={(e) => { if (e.key === 'Enter') act(); }}
           >
-            <span className="num">{isCur ? <Eq active={playing} /> : <>{i + 1}<Icon name="play" size={16} className="hover-play" /></>}</span>
+            <span className="num">
+              {selectable
+                ? <input type="checkbox" checked={!!selected?.has(t.id)} onChange={() => onToggle(t.id)} onClick={(e) => e.stopPropagation()} aria-label={`Select ${t.title}`} />
+                : isCur ? <Eq active={playing} /> : <>{i + 1}<Icon name="play" size={16} className="hover-play" /></>}
+            </span>
             <span className="title-cell">
-              <Cover src={t.cover} seed={t.albumId ?? t.id} label={t.title} className="thumb" />
+              <Cover src={t.cover} seed={t.albumKey || t.id} label={t.title} className="thumb" />
               <span className="t-text">
                 <span className="t-title">{t.title}</span>
                 <span className="t-artist">
-                  {t.artistId ? <a href={`#/artist/${t.artistId}`} onClick={(e) => e.stopPropagation()}>{t.artist}</a> : t.artist}
-                  {lib.isStored(t.id) && t.kind !== 'local' && <span className="badge" title="Available offline"> Offline</span>}
+                  {lib.artistByKey.has(t.artistKey)
+                    ? <a href={artistHref(t.artistKey)} onClick={(e) => e.stopPropagation()}>{t.artist}</a> : t.artist}
                 </span>
               </span>
             </span>
             {showAlbum && (
               <span className="album-cell">
-                {t.albumId ? <a href={`#/album/${t.albumId}`} onClick={(e) => e.stopPropagation()}>{t.album}</a> : t.album}
+                {lib.albumByKey.has(t.albumKey) ? <a href={albumHref(t.albumKey)} onClick={(e) => e.stopPropagation()}>{t.album}</a> : t.album}
               </span>
             )}
             <span className="dur">{fmtTime(t.duration)}</span>
-            <TrackMenu track={t} onRemove={onRemove ? () => onRemove(i) : undefined} />
+            {selectable ? <span /> : <TrackMenu track={t} onRemove={onRemove ? () => onRemove(i) : undefined} removeLabel={removeLabel} />}
           </div>
         );
       })}
@@ -187,22 +185,41 @@ export function TrackList({ tracks, onRemove, showAlbum = true, emptyText }) {
   );
 }
 
+const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
 export function AlbumCard({ album }) {
   return (
-    <a className="card" href={`#/album/${album.id}`}>
-      <Cover src={coverUrl(album.id)} seed={album.id} label={album.title} />
+    <a className="card" href={albumHref(album.key)}>
+      <Cover src={album.cover} seed={album.key} label={album.title} />
       <strong>{album.title}</strong>
-      <span className="muted">{album.year ? `${album.year} · ` : ''}{album.artist}</span>
+      <span className="muted">{album.artist} · {count(album.tracks.length, 'song', 'songs')}</span>
     </a>
   );
 }
 
 export function ArtistCard({ artist }) {
   return (
-    <a className="card" href={`#/artist/${artist.id}`}>
-      <Cover round seed={artist.id} label={artist.name} />
+    <a className="card" href={artistHref(artist.key)}>
+      <Cover round src={artist.cover} seed={artist.key} label={artist.name} />
       <strong>{artist.name}</strong>
-      <span className="muted">{artist.genre} · {artist.albums} {artist.albums === 1 ? 'album' : 'albums'}</span>
+      <span className="muted">{artist.albums.length ? `${count(artist.albums.length, 'album', 'albums')} · ` : ''}{count(artist.tracks.length, 'song', 'songs')}</span>
     </a>
+  );
+}
+
+export function PlaylistTile({ playlist }) {
+  return (
+    <a className="tile" href={`#/playlist/${playlist.id}`}>
+      <Cover src={playlist.cover} seed={playlist.id} label={playlist.name} className="thumb xl" />
+      <span className="tile-name">{playlist.name}</span>
+    </a>
+  );
+}
+
+export function Avatar({ url, name, size = 40 }) {
+  return (
+    <span className="avatar" style={{ width: size, height: size, fontSize: size * 0.4 }}>
+      {url ? <img src={url} alt="" /> : name ? name.trim()[0].toUpperCase() : <Icon name="user" size={size * 0.55} />}
+    </span>
   );
 }
