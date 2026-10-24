@@ -1,0 +1,26 @@
+{
+  "name": "rune-music",
+  "version": "1.0.0",
+  "description": "Rune \u2014 a Spotify-inspired music streaming web app with offline playback, online streaming and a built-in equalizer.",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c green,cyan \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client",
+    "start": "npm run start -w server",
+    "seed": "npm run seed -w server",
+    "test": "npm test -w server",
+    "build:static": "npm run build:static -w client",
+    "dev:static": "npm run dev:static -w client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
