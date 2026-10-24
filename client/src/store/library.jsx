@@ -2,7 +2,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { idb } from '../idb.js';
 import { readTags } from '../tags.js';
-import { UNKNOWN, albumKeyOf, artistKeyOf, groupTracks, resizeImage } from '../util.js';
+import { UNKNOWN, albumKeyOf, artistKeyOf, findMatch, fpOf, groupTracks, resizeImage, sigKeyOf } from '../util.js';
+import { buildExport, parseExport, planImport } from './backup.js';
 
 const Ctx = createContext(null);
 export const useLibrary = () => useContext(Ctx);
@@ -80,10 +81,13 @@ export function LibraryProvider({ children }) {
         const all = [];
         for (const r of await idb.all('files')) {
           if (r.kind === 'cached') { idb.del('files', r.id); continue; }          // v1 "saved for offline" demo songs no longer exist
-          if (r.kind === 'local' && r.album === 'Local files') { r.album = ''; idb.put('files', r); } // v1 placeholder album name
+          let dirtyRec = false;
+          if (r.kind === 'local' && r.album === 'Local files') { r.album = ''; dirtyRec = true; } // v1 placeholder album name
+          if ((r.kind === 'local' || r.kind === 'ghost') && !r.fp) { r.fp = fpOf(r.fileName || r.title, r.size); r.sigKey = r.sigKey || sigKeyOf(r.title, r.artist); dirtyRec = true; }
+          if (dirtyRec) idb.put('files', r);
           all.push(r);
         }
-        recMap.current = new Map(all.filter((r) => r.kind === 'local' || r.kind === 'video').map((r) => [r.id, r]));
+        recMap.current = new Map(all.filter((r) => ['local', 'ghost', 'video'].includes(r.kind)).map((r) => [r.id, r]));
         setRecords(Array.from(recMap.current.values()));
         const pl = ((await idb.get('kv', 'playlists')) || []).map((p) => ({
           id: p.id, name: p.name, updatedAt: p.updatedAt || 0,
@@ -102,28 +106,36 @@ export function LibraryProvider({ children }) {
   }, [toast]);
 
   // ---- derived songs, covers, groups, playlists ----
-  const tracks = useMemo(() => records.filter((r) => r.kind === 'local').map((r) => {
-    const t = { id: r.id, kind: 'local', title: r.title, artist: r.artist || UNKNOWN, album: r.album || '', trackNo: r.trackNo || 0, duration: r.duration || 0, addedAt: r.addedAt };
+  // A stored cover entry is a Blob (custom cover) or 'none' (the user removed the cover).
+  const customUrl = useCallback((key) => { const v = coverBlobs[key]; return v && v !== 'none' ? urlOf(v) : null; }, [coverBlobs, urlOf]);
+
+  const tracks = useMemo(() => records.filter((r) => r.kind === 'local' || r.kind === 'ghost').map((r) => {
+    const t = { id: r.id, kind: r.kind, missing: r.kind === 'ghost', title: r.title, artist: r.artist || UNKNOWN, album: r.album || '', trackNo: r.trackNo || 0, duration: r.duration || 0, addedAt: r.addedAt };
     t.artistKey = artistKeyOf(t); t.albumKey = albumKeyOf(t);
     t.art = urlOf(r.art);
-    const song = coverBlobs[`song:${t.id}`], album = t.albumKey && coverBlobs[`album:${t.albumKey}`];
-    t.cover = urlOf(song) || urlOf(album) || t.art || null;
+    t.cover = coverBlobs[`song:${t.id}`] === 'none' ? null : customUrl(`song:${t.id}`) || (t.albumKey && customUrl(`album:${t.albumKey}`)) || t.art || null;
     return t;
-  }).sort((a, b) => a.addedAt - b.addedAt), [records, coverBlobs, urlOf]);
+  }).sort((a, b) => a.addedAt - b.addedAt), [records, coverBlobs, urlOf, customUrl]);
 
   const byId = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks]);
 
   const groups = useMemo(() => {
     const g = groupTracks(tracks);
-    for (const al of g.albums) al.cover = urlOf(coverBlobs[`album:${al.key}`]) || al.tracks.find((t) => t.art)?.art || al.tracks.find((t) => t.cover)?.cover || null;
-    for (const a of g.artists) a.cover = urlOf(coverBlobs[`artist:${a.key}`]) || a.albums.find((al) => al.cover)?.cover || a.tracks.find((t) => t.cover)?.cover || null;
+    for (const al of g.albums) {
+      al.cover = coverBlobs[`album:${al.key}`] === 'none' ? null
+        : customUrl(`album:${al.key}`) || al.tracks.find((t) => t.art)?.art || al.tracks.find((t) => t.cover)?.cover || null;
+    }
+    for (const a of g.artists) {
+      a.cover = coverBlobs[`artist:${a.key}`] === 'none' ? null
+        : customUrl(`artist:${a.key}`) || a.albums.find((al) => al.cover)?.cover || a.tracks.find((t) => t.cover)?.cover || null;
+    }
     return g;
-  }, [tracks, coverBlobs, urlOf]);
+  }, [tracks, coverBlobs, customUrl]);
 
   const playlists = useMemo(() => rawPlaylists.map((p) => {
     const list = p.trackIds.map((id) => byId.get(id)).filter(Boolean);
-    return { ...p, tracks: list, cover: urlOf(coverBlobs[`playlist:${p.id}`]) || list.find((t) => t.cover)?.cover || null };
-  }), [rawPlaylists, byId, coverBlobs, urlOf]);
+    return { ...p, tracks: list, cover: coverBlobs[`playlist:${p.id}`] === 'none' ? null : customUrl(`playlist:${p.id}`) || list.find((t) => t.cover)?.cover || null };
+  }), [rawPlaylists, byId, coverBlobs, customUrl]);
 
   const videos = useMemo(() => records.filter((r) => r.kind === 'video').map((r) => ({
     id: r.id, title: r.title, duration: r.duration || 0, size: r.size || 0, addedAt: r.addedAt, poster: urlOf(r.poster),
@@ -141,22 +153,32 @@ export function LibraryProvider({ children }) {
   const addFiles = useCallback(async (list) => {
     const audio = Array.from(list).filter((f) => f.type.startsWith('audio/') || AUDIO_RE.test(f.name));
     if (!audio.length) { toast('No audio files found in that selection.', 'error'); return; }
-    let added = 0, skipped = 0;
+    let added = 0, skipped = 0, claimed = 0;
     for (const f of audio) {
-      if (Array.from(recMap.current.values()).some((r) => r.kind === 'local' && r.fileName === f.name && r.size === f.size)) { skipped++; continue; }
+      const fp = fpOf(f.name, f.size);
+      if (Array.from(recMap.current.values()).some((r) => r.kind === 'local' && r.fp === fp)) { skipped++; continue; }
       try {
         const tags = await readTags(f);
         const guess = parseName(f.name);
         const { duration } = await probeMedia(f, 'audio');
+        const title = tags.title || guess.title || stripExt(f.name);
+        const artist = tags.artist || guess.artist || UNKNOWN;
+        const sigKey = sigKeyOf(title, artist);
+        // A faded placeholder from an imported backup? Fill it in so its info, cover, playlists and stats carry over.
+        const ghost = findMatch(Array.from(recMap.current.values()).filter((r) => r.kind === 'ghost'), { fp, sigKey, duration });
+        if (ghost) {
+          await putRecord({ ...ghost, kind: 'local', blob: f, fileName: f.name, size: f.size, fp, duration: duration || ghost.duration, art: tags.art || ghost.art });
+          claimed++; added++;
+          continue;
+        }
         await putRecord({
-          id: `l:${uid()}`, kind: 'local', title: tags.title || guess.title || stripExt(f.name),
-          artist: tags.artist || guess.artist || UNKNOWN, album: tags.album || '', trackNo: tags.trackNo || 0,
-          duration, art: tags.art, fileName: f.name, size: f.size, addedAt: Date.now() + added, blob: f,
+          id: `l:${uid()}`, kind: 'local', title, artist, album: tags.album || '', trackNo: tags.trackNo || 0,
+          duration, art: tags.art, fileName: f.name, size: f.size, fp, sigKey, addedAt: Date.now() + added, blob: f,
         });
         added++;
       } catch { toast(`Could not save “${f.name}”. Storage may be full.`, 'error'); }
     }
-    if (added || skipped) toast(`${added ? `Added ${added} ${added === 1 ? 'song' : 'songs'}.` : ''}${skipped ? ` ${skipped} already in your library.` : ''}`.trim());
+    if (added || skipped) toast(`${added ? `Added ${added} ${added === 1 ? 'song' : 'songs'}${claimed ? ` (${claimed} restored from your backup)` : ''}.` : ''}${skipped ? ` ${skipped} already in your library.` : ''}`.trim());
   }, [putRecord, toast]);
 
   const addVideos = useCallback(async (list) => {
@@ -188,7 +210,7 @@ export function LibraryProvider({ children }) {
     recMap.current.delete(id);
     if (rec) { release(rec.art); release(rec.poster); }
     setRecords(Array.from(recMap.current.values()));
-    if (coversRef.current[`song:${id}`]) { const c = { ...coversRef.current }; release(c[`song:${id}`]); delete c[`song:${id}`]; persistCovers(c); }
+    if (coversRef.current[`song:${id}`]) dropCover('song', id);
     if (plRef.current.some((p) => p.trackIds.includes(id))) persistPlaylists(plRef.current.map((p) => ({ ...p, trackIds: p.trackIds.filter((x) => x !== id) })));
   }, [release, persistPlaylists]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -228,18 +250,27 @@ export function LibraryProvider({ children }) {
     if (changed) persistCovers(next);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ---- covers ----
-  const setCover = useCallback(async (kind, id, file) => {
-    try {
-      const blob = await resizeImage(file);
-      const next = { ...coversRef.current }; release(next[`${kind}:${id}`]); next[`${kind}:${id}`] = blob;
-      persistCovers(next);
-    } catch { toast('That file doesn’t look like an image.', 'error'); }
-  }, [release, toast]); // eslint-disable-line react-hooks/exhaustive-deps
-  const clearCover = useCallback((kind, id) => {
-    const next = { ...coversRef.current }; release(next[`${kind}:${id}`]); delete next[`${kind}:${id}`]; persistCovers(next);
+  // ---- covers (song / album / artist / playlist) ----
+  const setCoverBlob = useCallback((kind, id, blob) => {
+    const next = { ...coversRef.current };
+    if (next[`${kind}:${id}`] && next[`${kind}:${id}`] !== 'none') release(next[`${kind}:${id}`]);
+    next[`${kind}:${id}`] = blob;
+    persistCovers(next);
   }, [release]); // eslint-disable-line react-hooks/exhaustive-deps
-  const hasCover = useCallback((kind, id) => !!coverBlobs[`${kind}:${id}`], [coverBlobs]);
+  /** "Remove cover": hides whatever cover is shown (stored as 'none' so embedded art doesn't come back). */
+  const removeCover = useCallback((kind, id) => {
+    const next = { ...coversRef.current };
+    if (next[`${kind}:${id}`] && next[`${kind}:${id}`] !== 'none') release(next[`${kind}:${id}`]);
+    next[`${kind}:${id}`] = 'none';
+    persistCovers(next);
+  }, [release]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dropCover = useCallback((kind, id) => {
+    const next = { ...coversRef.current };
+    if (next[`${kind}:${id}`] && next[`${kind}:${id}`] !== 'none') release(next[`${kind}:${id}`]);
+    delete next[`${kind}:${id}`];
+    persistCovers(next);
+  }, [release]); // eslint-disable-line react-hooks/exhaustive-deps
+  const artBlob = useCallback((id) => recMap.current.get(id)?.art || null, []);
 
   // ---- playlists ----
   const createPlaylist = useCallback((name, trackIds = []) => {
@@ -249,21 +280,22 @@ export function LibraryProvider({ children }) {
   }, [persistPlaylists]);
   const patchPlaylist = (id, fn) => persistPlaylists(plRef.current.map((p) => (p.id === id ? { ...fn(p), updatedAt: Date.now() } : p)));
   const renamePlaylist = (id, name) => patchPlaylist(id, (p) => ({ ...p, name: name.trim() || p.name }));
-  const deletePlaylist = (id) => { clearCover('playlist', id); persistPlaylists(plRef.current.filter((p) => p.id !== id)); };
+  const deletePlaylist = (id) => { dropCover('playlist', id); persistPlaylists(plRef.current.filter((p) => p.id !== id)); };
   const addToPlaylist = (id, trackId) => patchPlaylist(id, (p) => (p.trackIds.includes(trackId) ? p : { ...p, trackIds: [...p.trackIds, trackId] }));
   const removeFromPlaylist = (id, index) => patchPlaylist(id, (p) => ({ ...p, trackIds: p.trackIds.filter((_, i) => i !== index) }));
 
   // ---- profile ----
-  const saveProfile = useCallback(async ({ name, username, avatarFile, removeAvatar }) => {
-    let avatar = profile.avatar;
-    try {
-      if (avatarFile) { release(avatar); avatar = await resizeImage(avatarFile, 512); }
-      else if (removeAvatar) { release(avatar); avatar = null; }
-    } catch { toast('That file doesn’t look like an image.', 'error'); }
-    const next = { name: name.trim(), username: username.trim().replace(/^@/, ''), avatar };
+  const persistProfile = useCallback((next) => {
     setProfileState(next);
     idb.put('kv', next, 'profile').catch(() => toast('Could not save your profile.', 'error'));
-  }, [profile.avatar, release, toast]);
+  }, [toast]);
+  const saveProfile = useCallback(({ name, username }) => {
+    persistProfile({ ...profile, name: name.trim(), username: username.trim().replace(/^@/, '') });
+  }, [profile, persistProfile]);
+  const setAvatar = useCallback((blob) => {
+    release(profile.avatar);
+    persistProfile({ ...profile, avatar: blob || null });
+  }, [profile, release, persistProfile]);
 
   // ---- listening stats ----
   const beginListen = useCallback((id) => { session.current = { id, secs: 0, counted: false }; }, []);
@@ -291,6 +323,44 @@ export function LibraryProvider({ children }) {
   const resetStats = useCallback(() => { statsRef.current = {}; dirty.current = false; idb.put('kv', {}, 'stats'); setStatsTick((n) => n + 1); }, []);
   const stats = useMemo(() => ({ ...statsRef.current }), [statsTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ---- backup: export / import everything except the audio files ----
+  const exportData = useCallback(async () => {
+    const file = await buildExport({
+      records: Array.from(recMap.current.values()), covers: coversRef.current, profile, playlists: plRef.current, stats: statsRef.current,
+    });
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url; a.download = `rune-backup-${new Date().toISOString().slice(0, 10)}.rune`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }, [profile]);
+
+  const importData = useCallback(async (file) => {
+    const data = await parseExport(file);
+    const plan = await planImport(data, Array.from(recMap.current.values()), { uid });
+    for (const r of [...plan.updated, ...plan.created]) { await idb.put('files', r); recMap.current.set(r.id, r); }
+    setRecords(Array.from(recMap.current.values()));
+    // covers
+    const covers = { ...coversRef.current };
+    for (const [k, v] of Object.entries(plan.covers)) { if (covers[k] && covers[k] !== 'none') release(covers[k]); covers[k] = v; }
+    persistCovers(covers);
+    // playlists: same id → keep the newer one
+    const merged = new Map(plRef.current.map((p) => [p.id, p]));
+    for (const p of plan.playlists) { const cur = merged.get(p.id); if (!cur || (p.updatedAt || 0) >= (cur.updatedAt || 0)) merged.set(p.id, p); }
+    persistPlaylists(Array.from(merged.values()));
+    // stats: never lose listening time — keep the larger value
+    for (const [id, s] of Object.entries(plan.stats)) {
+      const cur = (statsRef.current[id] ||= { seconds: 0, plays: 0 });
+      cur.seconds = Math.max(cur.seconds, s.seconds || 0); cur.plays = Math.max(cur.plays, s.plays || 0);
+    }
+    dirty.current = true; flushStats();
+    // profile
+    const pr = plan.profile;
+    if (pr.avatar) release(profile.avatar);
+    persistProfile({ name: pr.name || profile.name, username: pr.username || profile.username, avatar: pr.avatar || profile.avatar });
+    return plan.summary;
+  }, [profile, release, persistPlaylists, persistProfile, flushStats]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---- playback source ----
   const resolveSrc = useCallback(async (track) => {
     const rec = recMap.current.get(track.id) || (await idb.get('files', track.id));
@@ -305,7 +375,7 @@ export function LibraryProvider({ children }) {
     profile, avatarUrl, stats, notice, setNotice, toast, editing,
     openEdit: (ids, init = {}) => setEditing({ ids, init }), closeEdit: () => setEditing(null),
     addFiles, addVideos, removeFile: removeRecord, removeVideo: removeRecord, renameVideo, updateTracks, resolveSrc, videoBlob,
-    setCover, clearCover, hasCover,
+    setCoverBlob, removeCover, artBlob, setAvatar, exportData, importData,
     createPlaylist, renamePlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist,
     saveProfile, beginListen, recordListen, resetStats,
   }), [ready, tracks, byId, videos, playlists, groups, profile, avatarUrl, stats, notice, editing, coverBlobs]); // eslint-disable-line react-hooks/exhaustive-deps

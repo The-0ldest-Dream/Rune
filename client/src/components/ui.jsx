@@ -115,8 +115,8 @@ export function TrackMenu({ track, onRemove, removeLabel = 'Remove' }) {
         <div className="menu" role="menu">
           {view === 'main' ? (
             <>
-              <button role="menuitem" onClick={done(() => playNext(track))}>Play next</button>
-              <button role="menuitem" onClick={done(() => addToQueue(track))}>Add to queue</button>
+              {!track.missing && <button role="menuitem" onClick={done(() => playNext(track))}>Play next</button>}
+              {!track.missing && <button role="menuitem" onClick={done(() => addToQueue(track))}>Add to queue</button>}
               <button role="menuitem" onClick={() => setView('playlists')}>Add to playlist…</button>
               <button role="menuitem" onClick={done(() => lib.openEdit([track.id]))}>Edit info &amp; cover</button>
               {onRemove && <button role="menuitem" className="danger" onClick={done(onRemove)}>{removeLabel}</button>}
@@ -149,11 +149,15 @@ export function TrackList({ tracks, onRemove, removeLabel, showAlbum = true, emp
     <div className="tracklist" role="table" aria-label="Songs">
       {tracks.map((t, i) => {
         const isCur = current?.id === t.id;
-        const act = () => (selectable ? onToggle(t.id) : playQueue(tracks, i, label));
+        const act = () => {
+          if (selectable) onToggle(t.id);
+          else if (t.missing) lib.toast('This song isn’t on this device. Add the file in Device files to play it.');
+          else playQueue(tracks, i, label);
+        };
         return (
           <div
             key={`${t.id}-${i}`} role="row" tabIndex={0}
-            className={`track ${isCur ? 'current' : ''} ${showAlbum ? '' : 'no-album'} ${selectable && selected?.has(t.id) ? 'selected' : ''}`}
+            className={`track ${isCur ? 'current' : ''} ${t.missing ? 'missing' : ''} ${showAlbum ? '' : 'no-album'} ${selectable && selected?.has(t.id) ? 'selected' : ''}`}
             onClick={act} onKeyDown={(e) => { if (e.key === 'Enter') act(); }}
           >
             <span className="num">

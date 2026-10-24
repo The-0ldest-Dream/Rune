@@ -60,3 +60,47 @@ export async function resizeImage(file, max = 640) {
   c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
   return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Could not read that image'))), 'image/jpeg', 0.88));
 }
+
+/* ---------- song fingerprints (match the same file across devices) ---------- */
+/** Strong match: same file name and byte size. */
+export const fpOf = (fileName, size) => `${norm(fileName)}:${size || 0}`;
+/** Weak match: same title + artist as first read from the file's tags (plus a similar duration). */
+export const sigKeyOf = (title, artist) => `${norm(title)}|${norm(artist)}`;
+
+/** Finds the stored song (real or faded placeholder) that an exported entry refers to. */
+export function findMatch(records, entry, taken = new Set()) {
+  const pool = records.filter((r) => (r.kind === 'local' || r.kind === 'ghost') && !taken.has(r.id));
+  const strong = pool.find((r) => r.fp && r.fp === entry.fp);
+  if (strong) return strong;
+  return pool.find((r) => r.sigKey && r.sigKey === entry.sigKey && Math.abs((r.duration || 0) - (entry.duration || 0)) <= 2) || null;
+}
+
+/* ---------- images ---------- */
+export async function blobToDataURL(blob) {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+  return `data:${blob.type || 'application/octet-stream'};base64,${btoa(bin)}`;
+}
+export const dataURLToBlob = (url) => fetch(url).then((r) => r.blob());
+
+/** Cheap identity for an image blob: size + a sample of its bytes (used to de-duplicate album art in exports). */
+export async function cheapKey(blob) {
+  const head = new Uint8Array(await blob.slice(0, 128).arrayBuffer());
+  const tail = new Uint8Array(await blob.slice(Math.max(0, blob.size - 128)).arrayBuffer());
+  let h = 0;
+  for (const b of [...head, ...tail]) h = (h * 31 + b) | 0;
+  return `${blob.size}:${h}`;
+}
+
+/** Downscales (never upscales) an image to at most `max` px, as JPEG. Small JPEGs are returned untouched. */
+export async function shrinkImage(blob, max = 320) {
+  const bmp = await createImageBitmap(blob);
+  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  if (scale === 1 && blob.type === 'image/jpeg' && blob.size < 150_000) return blob;
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(bmp.width * scale));
+  c.height = Math.max(1, Math.round(bmp.height * scale));
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('image'))), 'image/jpeg', 0.82));
+}

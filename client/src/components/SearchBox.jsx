@@ -87,7 +87,7 @@ export default function SearchBox({ route }) {
             <div className="dd-head"><h4>{q ? 'Songs' : 'Your songs'}</h4></div>
             {songs.length === 0 && <p className="muted dd-empty">{q ? 'No songs match.' : 'Add songs in Device files to see them here.'}</p>}
             {songs.map((t, i) => (
-              <button key={t.id} className="dd-row dd-main" onClick={() => { if (q) remember(value); playQueue(songs, i, q ? 'Search results' : 'Your songs'); setOpen(false); }}>
+              <button key={t.id} className={`dd-row dd-main ${t.missing ? 'missing' : ''}`} onClick={() => { if (q) remember(value); playQueue(songs, i, q ? 'Search results' : 'Your songs'); setOpen(false); }}>
                 <Cover src={t.cover} seed={t.albumKey || t.id} label={t.title} className="thumb" />
                 <span className="t-text"><span className="t-title">{t.title}</span><span className="t-artist">{t.artist}</span></span>
               </button>

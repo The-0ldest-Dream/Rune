@@ -2,7 +2,7 @@
 import React, { useRef, useState } from 'react';
 import { useLibrary } from '../store/library.jsx';
 import { usePlayer } from '../store/player.jsx';
-import { CoverPicker } from '../components/EditDialog.jsx';
+import { KindCover } from '../components/EditDialog.jsx';
 import { Cover, Icon, Status, TrackList } from '../components/ui.jsx';
 
 export function PlaylistsPage() {
@@ -44,7 +44,7 @@ export function PlaylistPage({ id }) {
   return (
     <>
       <header className="hero">
-        <Cover src={p.cover} seed={p.id} label={p.name} className="hero-cover" />
+        <KindCover kind="playlist" id={p.id} src={p.cover} label={p.name} className="hero-cover" candidates={p.tracks} />
         <div>
           <span className="muted">Playlist</span>
           <input className="title-input" value={name ?? p.name} aria-label="Playlist name"
@@ -54,7 +54,6 @@ export function PlaylistPage({ id }) {
       </header>
       <div className="actions">
         <button className="play-btn big" aria-label="Play playlist" disabled={!p.tracks.length} onClick={() => playQueue(p.tracks, 0, p.name)}><Icon name="play" size={28} /></button>
-        <CoverPicker kind="playlist" id={p.id} />
         <button className="btn ghost danger" onClick={() => { if (confirm(`Delete “${p.name}”?`)) { lib.deletePlaylist(p.id); location.hash = '#/library'; } }}>
           <Icon name="trash" size={16} /> Delete playlist
         </button>

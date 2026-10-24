@@ -8,13 +8,14 @@ A private, offline-first music player that runs entirely in your browser. Add yo
 
 - **Your library** – add songs (MP3, FLAC, OGG/Opus, M4A, WAV…) by dragging files or choosing a folder. Embedded **cover art, title, artist, album and track number** are read automatically.
 - **Auto artists & albums** – a song group becomes an **artist** (or **album**) once two or more songs share the same artist (and album). Albums are opened from their artist's page. Songs with no artist stay in *Device files* until you edit them.
-- **Edit info & covers** – fix title/artist/album for one song or many at once (use *Select*), and set your own cover image for any **song, album, artist or playlist**.
+- **Edit info & covers** – fix title/artist/album for one song or many at once (use *Select*). Every **song, album, artist and playlist** (and your profile photo) has a cover you can edit: tap the **+** to add one (with a crop/zoom step), or tap an existing cover for *Remove cover*, *Change cover* or *Extract from a song*.
 - **Playlists** – create, rename, delete, add/remove songs, custom cover.
 - **Music videos** – the **Upload file** tab stores videos (MP4/WebM work everywhere) and plays them in a viewer.
 - **Search** – the top bar shows your songs and **recent searches** as you focus it, and searches songs, artists, playlists and videos — all on-device, so it works offline.
 - **Full-screen player** – big cover (or visualizer), shown with the normal controls; also enters the browser's real full-screen mode.
 - **Profile** – photo, name and username, plus a **top-10 songs** bar chart of your listening time. The Home page greets you by name, shows your top playlists, top albums and most-played songs.
 - **Player** – shuffle, repeat, queue (drag to reorder), media keys, 10-band **equalizer** with bass/mid/treble, presets and a live visualizer.
+- **Backup & sync** – *Profile → Export data* saves everything except the song files (profile, covers, artists/albums, edited info, playlists, stats) into one `.rune` file. *Import data* on another device restores it for songs found there; songs that aren't there are listed faded until you add the files.
 - **Offline** – installable PWA; the app works with no connection after the first visit.
 
 ## Run it
@@ -25,7 +26,7 @@ Requirements: Node.js 20 or newer.
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # production build in client/dist
-npm test           # unit tests (tag reader, grouping)
+npm test           # unit tests (tag reader, grouping, backup)
 ```
 
 ## Deploy to GitHub Pages
@@ -44,8 +45,8 @@ client/src/
   util.js           artist/album grouping, ranking, formatting
   idb.js            IndexedDB helper
   audio/engine.js   Web Audio graph: EQ, limiter, analyser
-  store/            library.jsx (files, covers, playlists, profile, stats) · player.jsx (queue, playback)
-  components/       PlayerBar, FullScreen, SearchBox, EditDialog, Panels, Visualizer, ui
+  store/            library.jsx (files, covers, playlists, profile, stats) · player.jsx (queue, playback) · backup.js (export/import)
+  components/       PlayerBar, FullScreen, SearchBox, EditDialog, CoverEditor, Panels, Visualizer, ui
   views/            Home, Search, Artists, Detail (artist/album), Library (playlists, device files), Videos, Profile
 client/test/        node:test unit tests
 ```

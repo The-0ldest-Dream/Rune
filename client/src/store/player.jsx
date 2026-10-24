@@ -127,8 +127,12 @@ export function PlayerProvider({ children }) {
   const seek = useCallback((t) => { audio.currentTime = t; setTime(t); }, [audio]);
   const setVolume = (v) => { setVolumeState(v); if (v > 0) setMuted(false); };
 
-  const playQueue = useCallback((tracks, start = 0, label = '') => {
-    if (!tracks.length) return;
+  const playQueue = useCallback((all, start = 0, label = '') => {
+    const chosen = all[start];
+    if (chosen?.missing) { libRef.current.toast('This song isn’t on this device. Add the file in Device files to play it.'); return; }
+    const tracks = all.filter((t) => !t.missing);              // faded songs (not on this device) can't play
+    if (!tracks.length) { libRef.current.toast('None of these songs are on this device yet.'); return; }
+    start = Math.max(0, tracks.indexOf(chosen));
     let items = tracks.map(withQid);
     origOrder.current = items.map((t) => t.qid);
     let index = start;
@@ -143,6 +147,7 @@ export function PlayerProvider({ children }) {
   }, [playIndex]);
 
   const addToQueue = useCallback((track) => {
+    if (track.missing) return;
     const item = withQid(track);
     origOrder.current.push(item.qid);
     const { queue, index } = stRef.current;
@@ -152,6 +157,7 @@ export function PlayerProvider({ children }) {
   }, [playIndex]);
 
   const playNext = useCallback((track) => {
+    if (track.missing) return;
     const item = withQid(track);
     origOrder.current.push(item.qid);
     const { queue, index } = stRef.current;

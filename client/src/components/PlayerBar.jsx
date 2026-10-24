@@ -11,16 +11,16 @@ export default function PlayerBar({ panel, setPanel, onFull, full }) {
   const toggleTab = (tab) => setPanel(panel.open && panel.tab === tab ? { ...panel, open: false } : { open: true, tab });
 
   return (
-    <footer className="playerbar" aria-label="Player">
+    <footer className={`playerbar ${current ? '' : 'idle'}`} aria-label="Player">
       <div className="pb-track">
         {current && (
-          <>
+          <button className="pb-open" onClick={() => setPanel({ open: true, tab: 'now' })} aria-label={`Open now playing: ${current.title}`}>
             <Cover src={current.cover} seed={current.albumKey || current.id} label={current.title} className="thumb lg" />
-            <div className="t-text">
+            <span className="t-text">
               <span className="t-title">{current.title}</span>
               <span className="t-artist">{current.artist}</span>
-            </div>
-          </>
+            </span>
+          </button>
         )}
       </div>
 
@@ -47,7 +47,6 @@ export default function PlayerBar({ panel, setPanel, onFull, full }) {
       <div className="pb-right">
         <IconButton icon="eq" label="Equalizer" active={panel.open && panel.tab === 'eq'} onClick={() => toggleTab('eq')} />
         <IconButton icon="queue" label="Queue" active={panel.open && panel.tab === 'queue'} onClick={() => toggleTab('queue')} />
-        <IconButton icon="panel" label="Now playing" active={panel.open && panel.tab === 'now'} onClick={() => toggleTab('now')} />
         <IconButton icon={p.muted || p.volume === 0 ? 'mute' : 'volume'} label={p.muted ? 'Unmute' : 'Mute'} onClick={p.toggleMute} />
         <input className="vol" type="range" min="0" max="1" step="0.01" value={p.muted ? 0 : p.volume} aria-label="Volume"
           onChange={(e) => p.setVolume(Number(e.target.value))} style={{ '--p': pct(p.muted ? 0 : p.volume, 1) }} />

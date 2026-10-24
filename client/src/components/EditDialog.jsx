@@ -1,18 +1,18 @@
-// Edit song info (one or many songs) and covers. Also exports CoverPicker, used on artist/album/playlist pages.
+// Edit song info (one or many songs) and covers. KindCover wires a CoverEditor to the library for songs, albums, artists and playlists.
 import React, { useEffect, useRef, useState } from 'react';
 import { useLibrary } from '../store/library.jsx';
 import { UNKNOWN } from '../util.js';
-import { Cover, Icon, IconButton } from './ui.jsx';
+import { CoverEditor } from './CoverEditor.jsx';
+import { IconButton } from './ui.jsx';
 
-export function CoverPicker({ kind, id, label = 'Change cover' }) {
+/** Cover editor wired to the library for one entity (song, album, artist or playlist). */
+export function KindCover({ kind, id, src, label, round, candidates, className, cropTitle }) {
   const lib = useLibrary();
-  const input = useRef(null);
   return (
-    <>
-      <button className="btn ghost" onClick={() => input.current.click()}><Icon name="image" size={16} /> {label}</button>
-      {lib.hasCover(kind, id) && <button className="btn ghost" onClick={() => lib.clearCover(kind, id)}>Remove custom cover</button>}
-      <input ref={input} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; if (f) lib.setCover(kind, id, f); }} />
-    </>
+    <CoverEditor src={src} seed={id} label={label} round={round} className={className} candidates={candidates} cropTitle={cropTitle}
+      onSave={(blob) => lib.setCoverBlob(kind, id, blob)}
+      onRemove={() => lib.removeCover(kind, id)}
+      onExtract={(t) => { const b = lib.artBlob(t.id); if (b) lib.setCoverBlob(kind, id, b); }} />
   );
 }
 
@@ -52,8 +52,9 @@ function Dialog({ ed }) {
         {!single && <p className="muted">Leave a field empty to keep each song’s current value.</p>}
         {single && (
           <div className="edit-cover">
-            <Cover src={single.cover} seed={single.albumKey || single.id} label={single.title} className="thumb xxl" />
-            <div className="row"><CoverPicker kind="song" id={single.id} /></div>
+            <KindCover kind="song" id={single.id} src={single.cover} label={single.title} className="edit-thumb"
+              candidates={lib.tracks.filter((t) => t.art && (t.id === single.id || t.albumKey === single.albumKey || !single.albumKey))} />
+            <p className="muted small">Tap the cover to change or remove it. A song cover overrides its album’s cover.</p>
           </div>
         )}
         {single && <label className="field"><span>Title</span><input value={f.title} onChange={set('title')} required /></label>}

@@ -101,7 +101,7 @@ function View({ route }) {
 
 function Shell() {
   const route = useRoute();
-  const { toggle } = usePlayer();
+  const { toggle, current } = usePlayer();
   const [panel, setPanel] = useState({ open: window.innerWidth > 1100, tab: 'now' });
   const [full, setFull] = useState(false);
 
@@ -127,7 +127,7 @@ function Shell() {
 
   const tabs = [['now', 'Now playing'], ['queue', 'Queue'], ['eq', 'Equalizer']];
   return (
-    <div className={`app ${panel.open ? 'with-panel' : ''}`}>
+    <div className={`app ${panel.open ? 'with-panel' : ''} ${current ? '' : 'no-bar'}`}>
       <Sidebar route={route} />
       <main className="main">
         <TopBar route={route} />
