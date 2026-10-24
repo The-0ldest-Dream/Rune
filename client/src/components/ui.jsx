@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { usePlayer } from '../store/player.jsx';
 import { useLibrary } from '../store/library.jsx';
+import { hashStr } from '../util.js';
 
 const PATHS = {
   play: 'M8 5v14l11-7z',
@@ -57,12 +58,11 @@ export const fmtTime = (s) => {
   return `${m}:${String(r).padStart(2, '0')}`;
 };
 
-const hash = (str) => { let h = 0; for (const c of String(str)) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
 
 export function Cover({ src, seed = '', round = false, label = '', className = '' }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
-  const h = hash(seed || label) % 360;
+  const h = hashStr(seed || label) % 360;
   return (
     <div className={`cover ${round ? 'round' : ''} ${className}`} style={{ '--h': h }}>
       {src && !failed ? (
@@ -140,6 +140,44 @@ export function TrackMenu({ track, onRemove, removeLabel = 'Remove' }) {
   );
 }
 
+/** "+" button: add the song to (or remove it from) a playlist. `up` opens the menu above the button. */
+export function AddToPlaylist({ track, up = false, size = 20 }) {
+  const lib = useLibrary();
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const esc = (e) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+
+  const inAny = lib.playlists.some((p) => p.trackIds.includes(track.id));
+  const toggle = (p) => {
+    const has = p.trackIds.includes(track.id);
+    has ? lib.removeTrackFromPlaylist(p.id, track.id) : lib.addToPlaylist(p.id, track.id);
+    lib.toast(has ? `Removed from “${p.name}”.` : `Added to “${p.name}”.`);
+    setOpen(false);
+  };
+  return (
+    <div className="menu-wrap" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <IconButton icon={inAny ? 'check' : 'plus'} size={size} active={inAny} label={inAny ? 'In a playlist – manage playlists' : 'Add to playlist'} onClick={() => setOpen(!open)} aria-expanded={open} />
+      {open && (
+        <div className={`menu ${up ? 'up' : ''}`} role="menu">
+          <div className="menu-title">Add to playlist</div>
+          <button role="menuitem" onClick={() => { const p = lib.createPlaylist(`Playlist ${lib.playlists.length + 1}`, [track.id]); lib.toast(`Created “${p.name}”.`); setOpen(false); }}>+ New playlist</button>
+          {lib.playlists.map((p) => (
+            <button key={p.id} role="menuitem" onClick={() => toggle(p)}>{p.name}{p.trackIds.includes(track.id) ? ' ✓' : ''}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Song table. `label` names the queue's source (shown in full-screen view). */
 export function TrackList({ tracks, onRemove, removeLabel, showAlbum = true, emptyText, label = '', selectable = false, selected, onToggle }) {
   const { playQueue, current, playing } = usePlayer();
@@ -180,6 +218,7 @@ export function TrackList({ tracks, onRemove, removeLabel, showAlbum = true, emp
                 {lib.albumByKey.has(t.albumKey) ? <a href={albumHref(t.albumKey)} onClick={(e) => e.stopPropagation()}>{t.album}</a> : t.album}
               </span>
             )}
+            {selectable ? <span /> : <AddToPlaylist track={t} />}
             <span className="dur">{fmtTime(t.duration)}</span>
             {selectable ? <span /> : <TrackMenu track={t} onRemove={onRemove ? () => onRemove(i) : undefined} removeLabel={removeLabel} />}
           </div>

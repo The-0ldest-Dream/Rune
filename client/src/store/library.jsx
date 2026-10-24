@@ -282,6 +282,7 @@ export function LibraryProvider({ children }) {
   const renamePlaylist = (id, name) => patchPlaylist(id, (p) => ({ ...p, name: name.trim() || p.name }));
   const deletePlaylist = (id) => { dropCover('playlist', id); persistPlaylists(plRef.current.filter((p) => p.id !== id)); };
   const addToPlaylist = (id, trackId) => patchPlaylist(id, (p) => (p.trackIds.includes(trackId) ? p : { ...p, trackIds: [...p.trackIds, trackId] }));
+  const removeTrackFromPlaylist = (id, trackId) => patchPlaylist(id, (p) => ({ ...p, trackIds: p.trackIds.filter((x) => x !== trackId) }));
   const removeFromPlaylist = (id, index) => patchPlaylist(id, (p) => ({ ...p, trackIds: p.trackIds.filter((_, i) => i !== index) }));
 
   // ---- profile ----
@@ -376,7 +377,7 @@ export function LibraryProvider({ children }) {
     openEdit: (ids, init = {}) => setEditing({ ids, init }), closeEdit: () => setEditing(null),
     addFiles, addVideos, removeFile: removeRecord, removeVideo: removeRecord, renameVideo, updateTracks, resolveSrc, videoBlob,
     setCoverBlob, removeCover, artBlob, setAvatar, exportData, importData,
-    createPlaylist, renamePlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist,
+    createPlaylist, renamePlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, removeTrackFromPlaylist,
     saveProfile, beginListen, recordListen, resetStats,
   }), [ready, tracks, byId, videos, playlists, groups, profile, avatarUrl, stats, notice, editing, coverBlobs]); // eslint-disable-line react-hooks/exhaustive-deps
 

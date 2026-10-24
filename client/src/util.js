@@ -104,3 +104,72 @@ export async function shrinkImage(blob, max = 320) {
   c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
   return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('image'))), 'image/jpeg', 0.82));
 }
+
+/* ---------- cover colours (for the Now playing backdrop) ---------- */
+export const hashStr = (str) => { let h = 0; for (const c of String(str)) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
+export const hueFor = (seed, label = '') => hashStr(seed || label) % 360;
+
+/** Picks the prominent colour of the WHOLE image from RGBA bytes: popular + saturated colours win over white/grey/black. */
+export function pickDominant(data) {
+  const bins = new Map();
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 200) continue;
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+    const e = bins.get(key) || { n: 0, r: 0, g: 0, b: 0 };
+    e.n++; e.r += r; e.g += g; e.b += b;
+    bins.set(key, e);
+  }
+  let best = null, bestScore = -1;
+  for (const e of bins.values()) {
+    const r = e.r / e.n, g = e.g / e.n, b = e.b / e.n;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    const sat = mx ? (mx - mn) / mx : 0, light = (mx + mn) / 510;
+    const usable = light < 0.06 || light > 0.94 ? 0.25 : 1;      // near-black / near-white make poor backgrounds
+    const score = e.n * (0.2 + sat * 1.8) * usable;
+    if (score > bestScore) { bestScore = score; best = [r, g, b]; }
+  }
+  return best;
+}
+
+function rgbToHsl([r, g, b]) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  let h = 0, s = 0;
+  if (d) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h = (h * 60 + 360) % 360;
+  }
+  return { h, s, l };
+}
+
+/** Two CSS colours (top → bottom) for a vertical gradient in the cover's shade. */
+export function backdropFor(rgb) {
+  const { h, s, l } = rgbToHsl(rgb);
+  const top = Math.min(0.46, Math.max(0.28, l)), sat = Math.min(0.85, s);
+  return { c1: `hsl(${Math.round(h)} ${Math.round(sat * 100)}% ${Math.round(top * 100)}%)`, c2: `hsl(${Math.round(h)} ${Math.round(sat * 100)}% ${Math.round(top * 48)}%)` };
+}
+export const backdropFromHue = (h) => ({ c1: `hsl(${h} 55% 32%)`, c2: `hsl(${h} 60% 14%)` });
+export const DEFAULT_BACKDROP = { c1: '#2a2a2a', c2: '#121212' };
+
+const colourCache = new Map();
+export function dominantColor(url) {
+  if (!colourCache.has(url)) {
+    colourCache.set(url, new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const n = 48, c = document.createElement('canvas');
+          c.width = c.height = n;
+          const g = c.getContext('2d', { willReadFrequently: true });
+          g.drawImage(img, 0, 0, n, n);
+          resolve(pickDominant(g.getImageData(0, 0, n, n).data));
+        } catch { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    }));
+  }
+  return colourCache.get(url);
+}

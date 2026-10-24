@@ -107,8 +107,8 @@ h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
 
 /* ---------- track list ---------- */
 .tracklist { display: flex; flex-direction: column; }
-.track { display: grid; grid-template-columns: 36px minmax(0, 4fr) minmax(0, 3fr) 52px 36px; align-items: center; gap: 12px; padding: 6px 12px; border-radius: 6px; cursor: default; }
-.track.no-album { grid-template-columns: 36px minmax(0, 1fr) 52px 36px; }
+.track { display: grid; grid-template-columns: 36px minmax(0, 4fr) minmax(0, 3fr) 36px 52px 36px; align-items: center; gap: 12px; padding: 6px 12px; border-radius: 6px; cursor: default; }
+.track.no-album { grid-template-columns: 36px minmax(0, 1fr) 36px 52px 36px; }
 .track:hover, .track:focus-visible { background: var(--elev); }
 .track .num { color: var(--muted); text-align: center; display: grid; place-items: center; }
 .track .hover-play { display: none; color: var(--text); }
@@ -231,10 +231,9 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; bord
   .content { padding: 4px 14px 24px; } .topbar { padding: 10px 14px; }
   .conn { display: none; }
   .hero { flex-direction: column; align-items: flex-start; }
-  .track, .track.no-album { grid-template-columns: 28px minmax(0, 1fr) 44px 32px; gap: 8px; padding: 6px 4px; }
+  .track, .track.no-album { grid-template-columns: 28px minmax(0, 1fr) 32px 44px 32px; gap: 8px; padding: 6px 4px; }
   .album-cell { display: none; }
-  .side { inset: 0 0 calc(var(--bar-h) + 56px) 0; }
-  .toast { bottom: calc(var(--bar-h) + 72px); }
+  .toast { bottom: calc(var(--bar-real, var(--bar-h)) + 72px); }
   .grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
@@ -286,7 +285,7 @@ button.dd-main:hover { background: var(--hover); }
 .video-head h2 { margin: 4px 8px; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* full screen player */
-.fs { position: fixed; inset: 8px 8px calc(var(--bar-h) + 16px) 8px; z-index: 40; background: #121212; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+.fs { position: fixed; inset: 8px 8px calc(var(--bar-real, var(--bar-h)) + 16px) 8px; z-index: 40; background: linear-gradient(180deg, var(--c1) 0%, var(--c2) 100%); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; transition: inset .45s ease, border-radius .45s ease; }
 .fs-head { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; }
 .fs-head h2 { margin: 0; font-size: 16px; }
 .fs-actions { display: flex; align-items: center; gap: 6px; }
@@ -319,7 +318,7 @@ button.dd-main:hover { background: var(--hover); }
 .bar-value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 @media (max-width: 800px) {
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .fs { inset: 0 0 calc(var(--bar-h) + 56px) 0; border-radius: 0; }
+  .fs { inset: 0 0 calc(var(--bar-real, var(--bar-h)) + 56px) 0; border-radius: 0; }
   .searchbox-wrap { max-width: none; }
 }
 @media (max-width: 600px) {
@@ -360,3 +359,34 @@ button.dd-main:hover { background: var(--hover); }
 .stats.backup { margin-top: 16px; }
 .stats.backup h2 { margin-bottom: 8px; }
 .dd-main.missing { opacity: .45; }
+
+/* ---------- v4: cover-tinted backdrop, immersive full screen, mobile player ---------- */
+@property --c1 { syntax: '<color>'; inherits: true; initial-value: #2a2a2a; }
+@property --c2 { syntax: '<color>'; inherits: true; initial-value: #121212; }
+.app { transition: --c1 .9s ease, --c2 .9s ease; }
+.side-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px; }
+.side-head h2 { margin: 0; font-size: 16px; }
+.app.np-tint .side { background: linear-gradient(180deg, var(--c1) 0%, var(--c2) 100%); }
+.menu.up { top: auto; bottom: calc(100% + 6px); }
+.menu-title { padding: 8px 12px 4px; font-size: 12px; color: var(--muted); }
+.fs { z-index: 45; }
+.fs-head, .fs-meta { transition: opacity .4s ease; }
+.fs-meta { position: absolute; left: 56px; bottom: 44px; display: flex; flex-direction: column; opacity: 0; pointer-events: none; text-shadow: 0 1px 8px rgba(0,0,0,.35); }
+.fs-meta strong { font-size: 22px; }
+.fs-meta span { color: rgba(255,255,255,.72); }
+.fs.immersive { inset: 0; border-radius: 0; cursor: none; }
+.fs.immersive .fs-head { opacity: 0; pointer-events: none; }
+.fs.immersive .fs-meta { opacity: 1; }
+.fs.immersive .fs-body { padding-bottom: 0; }
+
+@media (max-width: 800px) {
+  /* The Now playing / Queue / Equalizer panel takes the place of the page, directly above the player bar: no overlap. */
+  .app.with-panel .main { display: none; }
+  .app .side { position: static; grid-row: 1; grid-column: 1; inset: auto; box-shadow: none; z-index: auto; border-radius: 0; }
+  .app.with-panel .playerbar { background: var(--panel); }
+  .app.np-tint { background: linear-gradient(180deg, var(--c1) 0%, var(--c2) 100%); }
+  .app.np-tint .side, .app.np-tint .playerbar { background: transparent; }
+  .app.np-tint .sidebar { background: rgba(0,0,0,.35); }
+  .fs-meta { left: 24px; bottom: 28px; }
+  .controls { gap: 8px; }
+}

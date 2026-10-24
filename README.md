@@ -12,7 +12,9 @@ A private, offline-first music player that runs entirely in your browser. Add yo
 - **Playlists** – create, rename, delete, add/remove songs, custom cover.
 - **Music videos** – the **Upload file** tab stores videos (MP4/WebM work everywhere) and plays them in a viewer.
 - **Search** – the top bar shows your songs and **recent searches** as you focus it, and searches songs, artists, playlists and videos — all on-device, so it works offline.
-- **Full-screen player** – big cover (or visualizer), shown with the normal controls; also enters the browser's real full-screen mode.
+- **Full-screen player** – big cover (or visualizer) on a backdrop coloured from the whole cover, shown with the normal controls; after 5 seconds without interaction it switches to an immersive view (cover + title only) and any movement or key brings the controls back. Also enters the browser's real full-screen mode.
+- **Now playing** – the panel takes its colours from the cover too. Queue and Equalizer open from the buttons in the player bar.
+- **Quick add** – a **+** in the player bar and on every song row adds the song to (or removes it from) a playlist.
 - **Profile** – photo, name and username, plus a **top-10 songs** bar chart of your listening time. The Home page greets you by name, shows your top playlists, top albums and most-played songs.
 - **Player** – shuffle, repeat, queue (drag to reorder), media keys, 10-band **equalizer** with bass/mid/treble, presets and a live visualizer.
 - **Backup & sync** – *Profile → Export data* saves everything except the song files (profile, covers, artists/albums, edited info, playlists, stats) into one `.rune` file. *Import data* on another device restores it for songs found there; songs that aren't there are listed faded until you add the files.

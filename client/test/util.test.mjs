@@ -25,3 +25,17 @@ test('ranking and formatting', () => {
   assert.deepEqual(r.map((x) => x.id), ['b', 'c', 'a']);
   assert.equal(fmtListened(45), '45s'); assert.equal(fmtListened(125), '2m 5s'); assert.equal(fmtListened(4000), '1h 6m');
 });
+
+import { pickDominant, backdropFor } from '../src/util.js';
+test('dominant colour comes from the whole cover, favouring vivid colours over white', () => {
+  const px = (r, g, b, n) => Array.from({ length: n }, () => [r, g, b, 255]).flat();
+  const blueCover = Uint8ClampedArray.from([...px(82, 113, 255, 700), ...px(255, 255, 255, 250), ...px(240, 90, 160, 50)]);
+  const [r, g, b] = pickDominant(blueCover);
+  assert.ok(b > 200 && r < 120, `expected blue, got ${[r, g, b]}`);
+  const bd = backdropFor([r, g, b]);
+  assert.match(bd.c1, /^hsl\(2[0-9]{2} /);                       // blue hue
+  const light = (c) => Number(/(\d+)%\)$/.exec(c)[1]);
+  assert.ok(light(bd.c2) < light(bd.c1));                         // darker towards the bottom
+  const grey = Uint8ClampedArray.from(px(128, 128, 128, 400));
+  assert.deepEqual(pickDominant(grey).map(Math.round), [128, 128, 128]);
+});

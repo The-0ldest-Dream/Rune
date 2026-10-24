@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { LibraryProvider, useLibrary } from './store/library.jsx';
 import { PlayerProvider, usePlayer } from './store/player.jsx';
 import PlayerBar from './components/PlayerBar.jsx';
@@ -7,6 +7,7 @@ import EditDialog from './components/EditDialog.jsx';
 import FullScreen from './components/FullScreen.jsx';
 import { Equalizer, NowPlaying, Queue } from './components/Panels.jsx';
 import { Avatar, Icon, IconButton } from './components/ui.jsx';
+import { DEFAULT_BACKDROP, backdropFor, backdropFromHue, dominantColor, hueFor } from './util.js';
 import Home from './views/Home.jsx';
 import Search from './views/Search.jsx';
 import ArtistsPage from './views/Artists.jsx';
@@ -99,11 +100,28 @@ function View({ route }) {
   }
 }
 
+/** Colours for the Now playing backdrop, taken from the whole cover (or the placeholder's hue). */
+function useBackdrop(current) {
+  const [bd, setBd] = useState(DEFAULT_BACKDROP);
+  const cover = current?.cover, id = current?.id;
+  useEffect(() => {
+    let live = true;
+    if (!current) { setBd(DEFAULT_BACKDROP); return undefined; }
+    const fallback = backdropFromHue(hueFor(current.albumKey || current.id, current.title));
+    if (!cover) setBd(fallback);
+    else dominantColor(cover).then((rgb) => live && setBd(rgb ? backdropFor(rgb) : fallback));
+    return () => { live = false; };
+  }, [cover, id]); // eslint-disable-line react-hooks/exhaustive-deps
+  return bd;
+}
+
 function Shell() {
   const route = useRoute();
   const { toggle, current } = usePlayer();
   const [panel, setPanel] = useState({ open: window.innerWidth > 1100, tab: 'now' });
   const [full, setFull] = useState(false);
+  const appRef = useRef(null);
+  const bd = useBackdrop(current);
 
   // Space = play/pause (unless typing or focused on a control)
   useEffect(() => {
@@ -125,9 +143,22 @@ function Shell() {
     return () => document.removeEventListener('fullscreenchange', on);
   }, []);
 
-  const tabs = [['now', 'Now playing'], ['queue', 'Queue'], ['eq', 'Equalizer']];
+  // Publish the player bar's real height so overlays (full screen, toasts) never overlap it.
+  useEffect(() => {
+    const bar = document.querySelector('.playerbar');
+    if (!bar || !appRef.current) return undefined;
+    const set = () => appRef.current?.style.setProperty('--bar-real', `${bar.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, []);
+
+  const titles = { now: 'Now playing', queue: 'Queue', eq: 'Equalizer' };
+  const tint = panel.open && panel.tab === 'now' && current;
   return (
-    <div className={`app ${panel.open ? 'with-panel' : ''} ${current ? '' : 'no-bar'}`}>
+    <div ref={appRef} style={{ '--c1': bd.c1, '--c2': bd.c2 }}
+      className={`app ${panel.open ? 'with-panel' : ''} ${current ? '' : 'no-bar'} ${tint ? 'np-tint' : ''}`}>
       <Sidebar route={route} />
       <main className="main">
         <TopBar route={route} />
@@ -135,8 +166,8 @@ function Shell() {
       </main>
       {panel.open && (
         <aside className="side" aria-label="Player panel">
-          <div className="tabs" role="tablist">
-            {tabs.map(([k, label]) => <button key={k} role="tab" aria-selected={panel.tab === k} className={panel.tab === k ? 'on' : ''} onClick={() => setPanel({ open: true, tab: k })}>{label}</button>)}
+          <div className="side-head">
+            <h2>{titles[panel.tab]}</h2>
             <IconButton icon="close" label="Close panel" onClick={() => setPanel({ ...panel, open: false })} />
           </div>
           <div className="side-body">

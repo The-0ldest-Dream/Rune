@@ -1,6 +1,6 @@
 import React from 'react';
 import { usePlayer } from '../store/player.jsx';
-import { Cover, Icon, IconButton, fmtTime } from './ui.jsx';
+import { AddToPlaylist, Cover, Icon, IconButton, fmtTime } from './ui.jsx';
 
 const pct = (v, max) => `${max ? Math.min(100, (v / max) * 100) : 0}%`;
 
@@ -32,6 +32,7 @@ export default function PlayerBar({ panel, setPanel, onFull, full }) {
             {p.loading && !p.playing ? <span className="spinner dark" /> : <Icon name={p.playing ? 'pause' : 'play'} size={22} />}
           </button>
           <IconButton icon="next" size={24} label="Next" onClick={p.next} disabled={!current} />
+          {current && <AddToPlaylist track={current} up />}
           <button className={`icon-btn ${p.repeat !== 'off' ? 'on' : ''}`} aria-label={`Repeat: ${p.repeat}`} title={`Repeat: ${p.repeat}`} onClick={p.cycleRepeat}>
             <Icon name="repeat" />{p.repeat === 'one' && <sup className="one">1</sup>}
           </button>
