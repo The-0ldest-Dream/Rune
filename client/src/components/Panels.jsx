@@ -1,10 +1,18 @@
 // Right-hand panel: Now playing, Queue and Equalizer.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { usePlayer } from '../store/player.jsx';
 import { useLibrary } from '../store/library.jsx';
 import { EQ_LABELS, PRESETS } from '../audio/engine.js';
 import Visualizer from './Visualizer.jsx';
 import { Cover, Icon, IconButton, albumHref, artistHref, fmtTime } from './ui.jsx';
+
+/** Hosts the player's <video> element, so a music video shows up where a cover normally would. */
+export function VideoSurface({ className = '' }) {
+  const { registerSurface, toggle } = usePlayer();
+  const host = useRef(null);
+  useEffect(() => registerSurface(host.current), [registerSurface]);
+  return <div ref={host} className={`video-surface ${className}`} onClick={toggle} role="button" aria-label="Play or pause video" />;
+}
 
 export function NowPlaying() {
   const { current } = usePlayer();
@@ -19,7 +27,9 @@ export function NowPlaying() {
   }
   return (
     <div className="nowplaying">
-      <Cover src={current.cover} seed={current.albumKey || current.id} label={current.title} className="big" />
+      {current.kind === 'video'
+        ? <VideoSurface className="np-video" />
+        : <Cover src={current.cover} seed={current.albumKey || current.id} label={current.title} className="big" />}
       <h2>{current.title}</h2>
       <p className="muted">
         {lib.artistByKey.has(current.artistKey) ? <a href={artistHref(current.artistKey)}>{current.artist}</a> : current.artist}

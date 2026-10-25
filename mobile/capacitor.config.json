@@ -1,0 +1,8 @@
+{
+  "appId": "com.rune.music",
+  "appName": "Rune",
+  "webDir": "www",
+  "backgroundColor": "#000000",
+  "server": { "androidScheme": "https" },
+  "android": { "backgroundColor": "#000000" }
+}

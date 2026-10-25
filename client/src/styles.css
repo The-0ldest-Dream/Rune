@@ -390,3 +390,23 @@ button.dd-main:hover { background: var(--hover); }
   .fs-meta { left: 24px; bottom: 28px; }
   .controls { gap: 8px; }
 }
+
+/* ---------- v5: videos inside the player, mobile mini player ---------- */
+.video-surface { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 8px; overflow: hidden; cursor: pointer; box-shadow: 0 12px 40px rgba(0,0,0,.45); }
+.video-surface > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+.np-video { margin: 0 auto 16px; }
+.fs-video { width: min(100%, calc((100vh - 280px) * 16 / 9), 1100px); border-radius: 12px; }
+.fs.immersive .fs-video { width: min(100%, calc((100vh - 160px) * 16 / 9), 1300px); }
+button.video-thumb, button.card { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.card { padding: 12px; background: var(--elev); display: flex; flex-direction: column; gap: 4px; border-radius: var(--radius); }
+button.card:hover { background: var(--hover); }
+button.video-thumb { width: 100%; }
+.video-card.current { outline: 2px solid var(--accent); }
+.mobile-only { display: none; }
+@media (max-width: 800px) {
+  .desk-only { display: none; }
+  .mobile-only { display: inline-flex; }
+  /* Mini player: just the track, the controls and the seek bar. The row of extra buttons appears with the full cover view. */
+  .app:not(.with-panel) .pb-right { display: none; }
+  .app:not(.with-panel) .playerbar { padding-bottom: 8px; }
+}

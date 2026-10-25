@@ -1,0 +1,14 @@
+{
+  "name": "rune-mobile",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Capacitor wrapper that packages the Rune web app as an Android APK.",
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.2.0"
+  }
+}

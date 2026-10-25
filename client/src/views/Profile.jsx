@@ -5,6 +5,13 @@ import { fmtListened } from '../util.js';
 import { CoverEditor } from '../components/CoverEditor.jsx';
 import { Icon, Status } from '../components/ui.jsx';
 
+/** Link to the Windows / Android downloads when the site is hosted on GitHub Pages (https://<owner>.github.io/<repo>/). */
+function downloadsUrl() {
+  if (!location.hostname.endsWith('.github.io')) return null;
+  const owner = location.hostname.split('.')[0], repo = location.pathname.split('/')[1];
+  return repo ? `https://github.com/${owner}/${repo}/releases/tag/downloads` : null;
+}
+
 export default function ProfilePage() {
   const lib = useLibrary();
   const { profile, avatarUrl, stats } = lib;
@@ -81,6 +88,14 @@ export default function ProfilePage() {
         )}
         {total > 0 && <button className="link-btn" onClick={() => { if (confirm('Reset all listening stats?')) lib.resetStats(); }}>Reset stats</button>}
       </section>
+
+      {downloadsUrl() && (
+        <section className="stats backup" aria-labelledby="apps-title">
+          <h2 id="apps-title">Get the app</h2>
+          <p className="muted">Prefer a real app? Download Rune for Windows (.exe) or Android (.apk) — same features, works offline, and you can move your data over with Export / Import below.</p>
+          <div className="row"><a className="btn" href={downloadsUrl()} target="_blank" rel="noreferrer"><Icon name="download" size={16} /> Downloads</a></div>
+        </section>
+      )}
 
       <section className="stats backup" aria-labelledby="backup-title">
         <h2 id="backup-title">Backup &amp; sync between devices</h2>

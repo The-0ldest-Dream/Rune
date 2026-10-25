@@ -1,4 +1,4 @@
-// Player store: owns the single <audio> element, the queue and the equalizer engine.
+// Player store: owns the single media element (a <video> element plays songs AND music videos), the queue and the equalizer engine.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AudioEngine } from '../audio/engine.js';
 import { useLibrary } from './library.jsx';
@@ -20,7 +20,11 @@ export function PlayerProvider({ children }) {
   libRef.current = lib;
 
   const audioRef = useRef(null);
-  if (!audioRef.current) { audioRef.current = new Audio(); audioRef.current.preload = 'auto'; }
+  if (!audioRef.current) {
+    const el = document.createElement('video');   // plays audio files too; shown only while a music video is playing
+    el.preload = 'auto'; el.playsInline = true; el.setAttribute('playsinline', ''); el.controls = false;
+    audioRef.current = el;
+  }
   const audio = audioRef.current;
   const engineRef = useRef(null);
   if (!engineRef.current) engineRef.current = new AudioEngine(audio);
@@ -45,12 +49,27 @@ export function PlayerProvider({ children }) {
   const revokeRef = useRef(null);
 
   // Always show the latest title/artist/cover (songs can be edited while queued).
-  const queue = useMemo(() => st.queue.map((q) => (lib.byId.get(q.id) ? { ...lib.byId.get(q.id), qid: q.qid } : q)), [st.queue, lib.byId]);
+  const queue = useMemo(() => st.queue.map((q) => {
+    const fresh = lib.byId.get(q.id) || lib.videoById.get(q.id);
+    return fresh ? { ...fresh, qid: q.qid } : q;
+  }), [st.queue, lib.byId, lib.videoById]);
   const current = st.index >= 0 ? queue[st.index] || null : null;
   const currentIdRef = useRef(null);
-  currentIdRef.current = current?.id || null;
+  currentIdRef.current = current?.kind === 'video' ? null : current?.id || null;   // listening stats are for songs only
   const durRef = useRef(0);
   durRef.current = duration || current?.duration || 0;
+
+  // ---- where the picture goes: the newest mounted "surface" (Now playing panel / full screen) hosts the video element ----
+  const surfaces = useRef([]);
+  const attach = useCallback(() => {
+    const top = surfaces.current[surfaces.current.length - 1];
+    if (top) { if (audio.parentNode !== top) top.appendChild(audio); }
+    else if (audio.parentNode) audio.parentNode.removeChild(audio);
+  }, [audio]);
+  const registerSurface = useCallback((el) => {
+    surfaces.current.push(el); attach();
+    return () => { surfaces.current = surfaces.current.filter((x) => x !== el); attach(); };
+  }, [attach]);
 
   // ---- load & play a queue index ----
   const playIndex = useCallback(async (i, autoplay = true) => {
@@ -69,11 +88,12 @@ export function PlayerProvider({ children }) {
       if (id !== loadId.current) { revoke?.(); return; }
       revokeRef.current?.();
       revokeRef.current = revoke;
+      audio.poster = track.kind === 'video' ? track.cover || '' : '';
       audio.src = url;
       if (autoplay) await audio.play();
     } catch (e) {
       if (id !== loadId.current || e?.name === 'AbortError') return;
-      libRef.current.toast('This song couldn’t be played. The file may be missing or in a format your browser can’t decode.', 'error');
+      libRef.current.toast('This file couldn’t be played. It may be missing or in a format your browser can’t decode.', 'error');
     } finally {
       if (id === loadId.current) setLoading(false);
     }
@@ -246,7 +266,7 @@ export function PlayerProvider({ children }) {
 
   const value = useMemo(() => ({
     engine, current, queue, index: st.index, label: st.label, playing, loading, time, duration, volume, muted, shuffle, repeat,
-    toggle, pause: () => audio.pause(), next, prev, seek, setVolume, toggleMute: () => setMuted((m) => !m), toggleShuffle, cycleRepeat,
+    media: audio, registerSurface, toggle, pause: () => audio.pause(), next, prev, seek, setVolume, toggleMute: () => setMuted((m) => !m), toggleShuffle, cycleRepeat,
     playQueue, playIndex, addToQueue, playNext, removeFromQueue, moveInQueue, clearQueue,
   }), [engine, current, queue, st, playing, loading, time, duration, volume, muted, shuffle, repeat]); // eslint-disable-line react-hooks/exhaustive-deps
 

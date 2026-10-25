@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { LibraryProvider, useLibrary } from './store/library.jsx';
 import { PlayerProvider, usePlayer } from './store/player.jsx';
 import PlayerBar from './components/PlayerBar.jsx';
@@ -37,25 +37,28 @@ const NAV = [
   ['artists', 'Artists', 'user', '#/artists'],
   ['library', 'Playlists', 'library', '#/library'],
   ['local', 'Device files', 'music', '#/local'],
-  ['videos', 'Upload file', 'video', '#/videos'],
+  ['videos', 'Upload file', 'video', '#/videos', 'desk-only'],   // on phones it lives behind an icon in Device files
 ];
 
-function Sidebar({ route }) {
+const MOBILE_Q = '(max-width: 800px)';
+const isMobile = () => window.matchMedia(MOBILE_Q).matches;
+
+function Sidebar({ route, onNavigate }) {
   const lib = useLibrary();
-  const section = { playlist: 'library', artist: 'artists', album: 'artists' }[route.name] || route.name;
+  const section = { playlist: 'library', artist: 'artists', album: 'artists', ...(isMobile() ? { videos: 'local' } : {}) }[route.name] || route.name;
   return (
     <nav className="sidebar" aria-label="Main">
       <a className="brand" href="#/"><img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width="28" height="28" /> Rune</a>
       <ul>
-        {NAV.map(([key, label, icon, href]) => (
-          <li key={key}><a href={href} className={section === key ? 'active' : ''} aria-current={section === key ? 'page' : undefined}><Icon name={icon} size={22} /><span>{label}</span></a></li>
+        {NAV.map(([key, label, icon, href, cls]) => (
+          <li key={key} className={cls || ''}><a href={href} onClick={onNavigate} className={section === key ? 'active' : ''} aria-current={section === key ? 'page' : undefined}><Icon name={icon} size={22} /><span>{label}</span></a></li>
         ))}
       </ul>
       <div className="side-playlists">
         <h3>Playlists</h3>
         {lib.playlists.length === 0 && <p className="muted small">Playlists you create appear here.</p>}
         {lib.playlists.map((p) => (
-          <a key={p.id} href={`#/playlist/${p.id}`} className={route.name === 'playlist' && route.arg === p.id ? 'active' : ''}>{p.name}</a>
+          <a key={p.id} href={`#/playlist/${p.id}`} onClick={onNavigate} className={route.name === 'playlist' && route.arg === p.id ? 'active' : ''}>{p.name}</a>
         ))}
       </div>
     </nav>
@@ -94,7 +97,7 @@ function View({ route }) {
     case 'library': return <PlaylistsPage />;
     case 'playlist': return <PlaylistPage id={route.arg} />;
     case 'local': return <LocalPage />;
-    case 'videos': return <VideosPage openId={route.arg} />;
+    case 'videos': return <VideosPage />;
     case 'profile': return <ProfilePage />;
     default: return <Home />;
   }
@@ -122,6 +125,18 @@ function Shell() {
   const [full, setFull] = useState(false);
   const appRef = useRef(null);
   const bd = useBackdrop(current);
+
+  // Phones: tapping a tab (or any link) while the cover / full screen is open brings the player back to its mini form.
+  const minimise = useCallback(() => {
+    if (!isMobile()) return;
+    setPanel((p) => (p.open ? { ...p, open: false } : p));
+    setFull(false);
+  }, []);
+  const closeFull = useCallback(() => setFull(false), []);
+  useEffect(() => { minimise(); }, [route.name, route.arg, minimise]);
+
+  // Starting a music video opens Now playing so the picture is visible.
+  useEffect(() => { if (current?.kind === 'video') setPanel({ open: true, tab: 'now' }); }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Space = play/pause (unless typing or focused on a control)
   useEffect(() => {
@@ -159,7 +174,7 @@ function Shell() {
   return (
     <div ref={appRef} style={{ '--c1': bd.c1, '--c2': bd.c2 }}
       className={`app ${panel.open ? 'with-panel' : ''} ${current ? '' : 'no-bar'} ${tint ? 'np-tint' : ''}`}>
-      <Sidebar route={route} />
+      <Sidebar route={route} onNavigate={minimise} />
       <main className="main">
         <TopBar route={route} />
         <div className="content"><View route={route} /></div>
@@ -177,7 +192,7 @@ function Shell() {
           </div>
         </aside>
       )}
-      {full && <FullScreen onClose={() => setFull(false)} />}
+      {full && <FullScreen onClose={closeFull} />}
       <PlayerBar panel={panel} setPanel={setPanel} full={full} onFull={() => setFull((f) => !f)} />
       <Toast />
       <EditDialog />

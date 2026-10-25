@@ -141,6 +141,13 @@ export function LibraryProvider({ children }) {
     id: r.id, title: r.title, duration: r.duration || 0, size: r.size || 0, addedAt: r.addedAt, poster: urlOf(r.poster),
   })).sort((a, b) => b.addedAt - a.addedAt), [records, urlOf]);
 
+  // Videos as playable items (same shape the player uses for songs).
+  const videoTracks = useMemo(() => videos.map((v) => ({
+    id: v.id, kind: 'video', missing: false, title: v.title, artist: 'Music video', album: '', albumKey: '', artistKey: '', trackNo: 0,
+    duration: v.duration, cover: v.poster, art: null, addedAt: v.addedAt,
+  })), [videos]);
+  const videoById = useMemo(() => new Map(videoTracks.map((v) => [v.id, v])), [videoTracks]);
+
   const avatarUrl = useMemo(() => urlOf(profile.avatar), [profile.avatar, urlOf]);
 
   // ---- adding / removing files ----
@@ -372,7 +379,7 @@ export function LibraryProvider({ children }) {
   const videoBlob = useCallback((id) => recMap.current.get(id)?.blob || null, []);
 
   const value = useMemo(() => ({
-    ready, tracks, byId, videos, playlists, artists: groups.artists, albums: groups.albums, artistByKey: groups.artistByKey, albumByKey: groups.albumByKey,
+    ready, tracks, byId, videos, videoTracks, videoById, playlists, artists: groups.artists, albums: groups.albums, artistByKey: groups.artistByKey, albumByKey: groups.albumByKey,
     profile, avatarUrl, stats, notice, setNotice, toast, editing,
     openEdit: (ids, init = {}) => setEditing({ ids, init }), closeEdit: () => setEditing(null),
     addFiles, addVideos, removeFile: removeRecord, removeVideo: removeRecord, renameVideo, updateTracks, resolveSrc, videoBlob,

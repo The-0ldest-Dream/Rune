@@ -1,8 +1,9 @@
 // Full-screen "now playing": cover on a backdrop tinted from the cover, with the normal controls below.
 // After 5 seconds without interaction it switches to an immersive view (cover + title only); any input brings the controls back.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { usePlayer } from '../store/player.jsx';
 import Visualizer from './Visualizer.jsx';
+import { VideoSurface } from './Panels.jsx';
 import { Cover, Icon, IconButton } from './ui.jsx';
 
 const IDLE_MS = 5000;
@@ -11,13 +12,17 @@ export default function FullScreen({ onClose }) {
   const { current, label } = usePlayer();
   const [view, setView] = useState('cover');
   const [immersive, setImmersive] = useState(false);
+  // Keep the latest onClose in a ref: the parent re-renders many times a second while music plays, and an effect that
+  // depended on a fresh callback every time would restart the 5-second timer on each render, so it never fired.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
     let timer, last = { x: -99, y: -99 };
     const arm = () => { clearTimeout(timer); timer = setTimeout(() => setImmersive(true), IDLE_MS); };
     const wake = () => { setImmersive(false); arm(); };
     const move = (e) => { if (Math.hypot(e.clientX - last.x, e.clientY - last.y) > 4) { last = { x: e.clientX, y: e.clientY }; wake(); } };
-    const esc = (e) => { if (e.key === 'Escape') onClose(); else wake(); };
+    const esc = (e) => { if (e.key === 'Escape') closeRef.current(); else wake(); };
     arm();
     window.addEventListener('mousemove', move);
     window.addEventListener('keydown', esc);
@@ -28,7 +33,7 @@ export default function FullScreen({ onClose }) {
       window.removeEventListener('keydown', esc);
       for (const ev of ['pointerdown', 'touchstart', 'wheel']) window.removeEventListener(ev, wake);
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <section className={`fs ${immersive ? 'immersive' : ''}`} role="dialog" aria-label="Full screen player">
@@ -44,6 +49,8 @@ export default function FullScreen({ onClose }) {
       <div className="fs-body">
         {!current ? (
           <div className="panel-empty"><Icon name="music" size={48} /><p>Nothing is playing.</p></div>
+        ) : view === 'cover' && current.kind === 'video' ? (
+          <VideoSurface className="fs-video" />
         ) : view === 'cover' ? (
           <Cover src={current.cover} seed={current.albumKey || current.id} label={current.title} className="fs-cover" />
         ) : (

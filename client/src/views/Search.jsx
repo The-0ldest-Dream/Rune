@@ -1,17 +1,19 @@
 import React, { useMemo } from 'react';
 import { useLibrary } from '../store/library.jsx';
+import { usePlayer } from '../store/player.jsx';
 import { matches } from '../components/SearchBox.jsx';
 import { ArtistCard, Cover, Status, TrackList } from '../components/ui.jsx';
 import { fmtTime } from '../components/ui.jsx';
 
 export default function Search({ q }) {
   const lib = useLibrary();
+  const { playQueue } = usePlayer();
   const needle = q.trim().toLowerCase();
 
   const songs = useMemo(() => (needle ? lib.tracks.filter((t) => matches(t, needle)) : []), [lib.tracks, needle]);
   const artists = useMemo(() => (needle ? lib.artists.filter((a) => a.name.toLowerCase().includes(needle)) : []), [lib.artists, needle]);
   const playlists = useMemo(() => (needle ? lib.playlists.filter((p) => p.name.toLowerCase().includes(needle)) : []), [lib.playlists, needle]);
-  const videos = useMemo(() => (needle ? lib.videos.filter((v) => v.title.toLowerCase().includes(needle)) : []), [lib.videos, needle]);
+  const videos = useMemo(() => (needle ? lib.videoTracks.filter((v) => v.title.toLowerCase().includes(needle)) : []), [lib.videoTracks, needle]);
 
   if (!needle) {
     return (
@@ -38,8 +40,8 @@ export default function Search({ q }) {
       )}
       {videos.length > 0 && (
         <section><h2>Music videos</h2>
-          <div className="grid">{videos.map((v) => (
-            <a key={v.id} className="card" href={`#/videos/${v.id}`}><Cover src={v.poster} seed={v.id} label={v.title} /><strong>{v.title}</strong><span className="muted">{fmtTime(v.duration)}</span></a>
+          <div className="grid">{videos.map((v, i) => (
+            <button key={v.id} className="card" onClick={() => playQueue(videos, i, 'Music videos')}><Cover src={v.cover} seed={v.id} label={v.title} /><strong>{v.title}</strong><span className="muted">{fmtTime(v.duration)}</span></button>
           ))}</div>
         </section>
       )}

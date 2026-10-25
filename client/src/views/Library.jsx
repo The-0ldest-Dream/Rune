@@ -83,6 +83,7 @@ export function LocalPage() {
       <div className="section-head">
         <h1>Device files</h1>
         <div className="row">
+          <a className="icon-btn mobile-only" href="#/videos" aria-label="Upload music videos" title="Upload music videos"><Icon name="video" size={22} /></a>
           {lib.tracks.length > 0 && !selecting && <button className="btn ghost" onClick={() => setSelecting(true)}>Select</button>}
           {lib.tracks.length > 0 && !selecting && <button className="btn" onClick={() => playQueue(lib.tracks, 0, 'Device files')}><Icon name="play" size={16} /> Play all</button>}
         </div>

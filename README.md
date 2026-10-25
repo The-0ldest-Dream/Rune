@@ -10,7 +10,7 @@ A private, offline-first music player that runs entirely in your browser. Add yo
 - **Auto artists & albums** – a song group becomes an **artist** (or **album**) once two or more songs share the same artist (and album). Albums are opened from their artist's page. Songs with no artist stay in *Device files* until you edit them.
 - **Edit info & covers** – fix title/artist/album for one song or many at once (use *Select*). Every **song, album, artist and playlist** (and your profile photo) has a cover you can edit: tap the **+** to add one (with a crop/zoom step), or tap an existing cover for *Remove cover*, *Change cover* or *Extract from a song*.
 - **Playlists** – create, rename, delete, add/remove songs, custom cover.
-- **Music videos** – the **Upload file** tab stores videos (MP4/WebM work everywhere) and plays them in a viewer.
+- **Music videos** – the **Upload file** tab (on phones: the video icon in *Device files*) stores videos (MP4/WebM work everywhere). They play in the **same player as your songs** — queue, seek, volume and equalizer included — with the picture shown where the cover would be, including full screen.
 - **Search** – the top bar shows your songs and **recent searches** as you focus it, and searches songs, artists, playlists and videos — all on-device, so it works offline.
 - **Full-screen player** – big cover (or visualizer) on a backdrop coloured from the whole cover, shown with the normal controls; after 5 seconds without interaction it switches to an immersive view (cover + title only) and any movement or key brings the controls back. Also enters the browser's real full-screen mode.
 - **Now playing** – the panel takes its colours from the cover too. Queue and Equalizer open from the buttons in the player bar.
@@ -31,9 +31,25 @@ npm run build      # production build in client/dist
 npm test           # unit tests (tag reader, grouping, backup)
 ```
 
+## Download the apps (Windows .exe and Android .apk)
+
+Besides the website, Rune can be installed as a real app. GitHub builds both for you:
+
+1. In your repo open **Actions → Build Windows & Android apps → Run workflow**.
+2. Wait about 10 minutes for the green tick.
+3. Open **Releases → Rune downloads** (the *downloads* release) and grab:
+   - `Rune-Setup.exe` – Windows installer, or `Rune-Portable.exe` – runs without installing
+   - `Rune.apk` – Android app
+
+Notes: the apps aren't code-signed, so Windows SmartScreen and Android will ask for confirmation. Each app (and the website) keeps its own library; move your covers, playlists and stats between them with **Profile → Export data / Import data**. The workflow files are `.github/workflows/apps.yml`, the Windows shell is in `desktop/` (Electron) and the Android shell in `mobile/` (Capacitor).
+
 ## Deploy to GitHub Pages
 
 The workflow `.github/workflows/pages.yml` builds and publishes on every push to `main`. One-time setup: **Settings → Pages → Build and deployment → Source: GitHub Actions**. The site appears at `https://<your-username>.github.io/<repo-name>/`.
+
+## Phones
+
+On small screens the player shows a mini bar (track, controls, seek). Tap the cover or title to open the full cover view, where the equalizer, queue and full-screen buttons appear. Tapping any tab minimises it again.
 
 ## How data is stored
 
@@ -51,6 +67,8 @@ client/src/
   components/       PlayerBar, FullScreen, SearchBox, EditDialog, CoverEditor, Panels, Visualizer, ui
   views/            Home, Search, Artists, Detail (artist/album), Library (playlists, device files), Videos, Profile
 client/test/        node:test unit tests
+desktop/            Electron shell + installer config for the Windows app
+mobile/             Capacitor config for the Android app
 ```
 
 ## Notes
