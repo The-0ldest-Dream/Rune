@@ -1,82 +1,119 @@
+<div align="center">
+
 # Rune
 
-A private, offline-first music player that runs entirely in your browser. Add your own songs and music videos, and Rune reads their cover art and tags, groups them into artists and albums, tracks what you listen to, and lets you shape the sound with an equalizer. Nothing is uploaded anywhere — your files stay in your browser's storage.
+**Your music and music videos — private, offline, and beautiful.**
 
-> Rune is an independent project inspired by the layout of mainstream music apps. It is not affiliated with Spotify. There are no social features.
+Add the songs you already own. Rune finds the cover art, builds your artists and albums, and plays everything with an equalizer. No account, no ads, no tracking.
 
-## Features
+[**▶ Open Rune in your browser**](https://the-0ldest-dream.github.io/Rune/)
 
-- **Your library** – add songs (MP3, FLAC, OGG/Opus, M4A, WAV…) by dragging files or choosing a folder. Embedded **cover art, title, artist, album and track number** are read automatically.
-- **Auto artists & albums** – a song group becomes an **artist** (or **album**) once two or more songs share the same artist (and album). Albums are opened from their artist's page. Songs with no artist stay in *Device files* until you edit them.
-- **Edit info & covers** – fix title/artist/album for one song or many at once (use *Select*). Every **song, album, artist and playlist** (and your profile photo) has a cover you can edit: tap the **+** to add one (with a crop/zoom step), or tap an existing cover for *Remove cover*, *Change cover* or *Extract from a song*.
-- **Playlists** – create, rename, delete, add/remove songs, custom cover.
-- **Music videos** – the **Upload file** tab (on phones: the video icon in *Device files*) stores videos (MP4/WebM work everywhere). They play in the **same player as your songs** — queue, seek, volume and equalizer included — with the picture shown where the cover would be, including full screen.
-- **Search** – the top bar shows your songs and **recent searches** as you focus it, and searches songs, artists, playlists and videos — all on-device, so it works offline.
-- **Full-screen player** – big cover (or visualizer) on a backdrop coloured from the whole cover, shown with the normal controls; after 5 seconds without interaction it switches to an immersive view (cover + title only) and any movement or key brings the controls back. Also enters the browser's real full-screen mode.
-- **Now playing** – the panel takes its colours from the cover too. Queue and Equalizer open from the buttons in the player bar.
-- **Quick add** – a **+** in the player bar and on every song row adds the song to (or removes it from) a playlist.
-- **Profile** – photo, name and username, plus a **top-10 songs** bar chart of your listening time. The Home page greets you by name, shows your top playlists, top albums and most-played songs.
-- **Player** – shuffle, repeat, queue (drag to reorder), media keys, 10-band **equalizer** with bass/mid/treble, presets and a live visualizer.
-- **Backup & sync** – *Profile → Export data* saves everything except the song files (profile, covers, artists/albums, edited info, playlists, stats) into one `.rune` file. *Import data* on another device restores it for songs found there; songs that aren't there are listed faded until you add the files.
-- **Offline** – installable PWA; the app works with no connection after the first visit.
+</div>
 
-## Run it
+---
 
-Requirements: Node.js 20 or newer.
+## Download
+
+Rune works in any modern browser, and also comes as an app:
+
+| Platform | Download | Notes |
+| --- | --- | --- |
+| **Windows** (installer) | [Rune-Setup.exe](https://github.com/The-0ldest-Dream/Rune/releases/download/downloads/Rune-Setup.exe) | Installs like a normal program, with a Start-menu shortcut |
+| **Windows** (portable) | [Rune-Portable.exe](https://github.com/The-0ldest-Dream/Rune/releases/download/downloads/Rune-Portable.exe) | No installation — just double-click |
+| **Android** | [Rune.apk](https://github.com/The-0ldest-Dream/Rune/releases/download/downloads/Rune.apk) | See "Installing on Android" below |
+| **iPhone / iPad / Mac / Linux** | [Open the website](https://the-0ldest-dream.github.io/Rune/) | In Safari: Share → *Add to Home Screen*. In Chrome/Edge: *Install app* in the address bar |
+
+All files are also listed on the [downloads page](https://github.com/The-0ldest-Dream/Rune/releases/tag/downloads).
+If a link says "not found", the latest build is still being prepared — try again in a few minutes.
+
+**Windows warning?** The apps aren't code-signed, so Windows SmartScreen may say "Windows protected your PC". Click **More info → Run anyway**.
+
+**Installing on Android:** open the downloaded `Rune.apk`. If Android asks, allow your browser or Files app to **install unknown apps**, then tap *Install*.
+
+---
+
+## What you can do
+
+- 🎵 **Play your own music** — MP3, FLAC, OGG, Opus, M4A, WAV and more. Drag files in or pick a whole folder.
+- 🖼️ **Automatic covers, artists and albums** — cover art, title, artist and album are read from your files. Two or more songs by the same artist create an artist page; two or more from the same album create an album.
+- ✏️ **Fix and personalise** — edit song info (one song or many at once) and set your own cover for any song, album, artist, playlist or your profile photo, with crop and zoom.
+- 🎬 **Music videos too** — add videos and watch them in the same player as your songs.
+- 🎚️ **Equalizer & visualizer** — bass / mid / treble, a 10-band equalizer with presets, and live visualizer bars.
+- 📋 **Playlists and queue** — create playlists, add songs with the **+** button, reorder the queue by dragging.
+- 🔍 **Fast search** — songs, artists, playlists and videos, with recent searches. Works with no internet.
+- 🖥️ **Full-screen player** — a big cover on a backdrop coloured from the artwork; after 5 quiet seconds it becomes a clean, immersive view.
+- 📊 **Your stats** — see your top 10 most-listened songs on your profile; Home shows your top playlists, albums and most-played songs.
+- 💾 **Backup & sync between devices** — export your data (everything except the song files) and import it on another device.
+
+## Getting started in one minute
+
+1. Open Rune and go to **Device files**.
+2. Drag in some songs, or tap **Choose files** / **Choose folder**.
+3. Press play. Tap the cover or title for the big now-playing view; the equalizer and queue buttons are in the player bar.
+4. Open **Profile** (top-right photo) to add your name and photo.
+
+**Music videos:** open **Upload file** (on phones: the video icon at the top of *Device files*) and add your videos. Press play on one and it opens in the player.
+
+## Moving to a new phone or computer
+
+1. On your current device: **Profile → Export data**. You get one small `.rune` file.
+2. On the new device: add the same songs first, then **Profile → Import data**.
+3. Songs that are found there get all their covers, artists, albums, playlists and stats back. Songs that aren't on the new device are still listed, but faded, until you add the files.
+
+Your songs themselves are never exported — only the information around them.
+
+## Privacy
+
+- Everything stays **on your device**. Rune has no server, no account and no analytics.
+- Your songs and videos are copied into the app's own storage (your browser or the app), so they keep working offline. Your original files are never changed.
+- **Profile → Delete account** wipes everything Rune has stored. Clearing your browser's site data does the same.
+
+## Questions & problems
+
+**A song won't play.** Your browser couldn't decode that format. MP3, M4A (AAC), OGG, Opus, WAV and FLAC work in current browsers; WMA and some rare formats don't.
+
+**My music disappeared.** Rune stores data in your browser. Clearing site data, using a private window, or switching browsers removes it. Export a backup now and then.
+
+**The Android app stops when the screen is off.** Android can pause apps in the background. Turn off battery optimisation for Rune, or keep the screen on.
+
+**Videos don't play.** MP4 (H.264) and WebM work everywhere; MKV and AVI usually don't work in browsers.
+
+**Is it free?** Yes, and open source (MIT). Please only add music and videos you have the right to use.
+
+---
+
+## For developers
+
+Rune is a React + Vite app that runs entirely in the browser (IndexedDB for storage, Web Audio for the equalizer). The Windows app wraps it with Electron and the Android app with Capacitor.
 
 ```bash
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # production build in client/dist
-npm test           # unit tests (tag reader, grouping, backup)
+npm test           # unit tests: tag reader, grouping, backup, colours
 ```
-
-## Download the apps (Windows .exe and Android .apk)
-
-Besides the website, Rune can be installed as a real app. GitHub builds both for you:
-
-1. In your repo open **Actions → Build Windows & Android apps → Run workflow**.
-2. Wait about 10 minutes for the green tick.
-3. Open **Releases → Rune downloads** (the *downloads* release) and grab:
-   - `Rune-Setup.exe` – Windows installer, or `Rune-Portable.exe` – runs without installing
-   - `Rune.apk` – Android app
-
-Notes: the apps aren't code-signed, so Windows SmartScreen and Android will ask for confirmation. Each app (and the website) keeps its own library; move your covers, playlists and stats between them with **Profile → Export data / Import data**. The workflow files are `.github/workflows/apps.yml`, the Windows shell is in `desktop/` (Electron) and the Android shell in `mobile/` (Capacitor).
-
-## Deploy to GitHub Pages
-
-The workflow `.github/workflows/pages.yml` builds and publishes on every push to `main`. One-time setup: **Settings → Pages → Build and deployment → Source: GitHub Actions**. The site appears at `https://<your-username>.github.io/<repo-name>/`.
-
-## Phones
-
-On small screens the player shows a mini bar (track, controls, seek). Tap the cover or title to open the full cover view, where the equalizer, queue and full-screen buttons appear. Tapping any tab minimises it again.
-
-## How data is stored
-
-Everything lives in your browser (IndexedDB + localStorage): song and video files, covers, playlists, profile and listening stats. Clearing site data erases it, and it is not shared between browsers or devices.
-
-## Project structure
 
 ```
 client/src/
-  tags.js           ID3 / FLAC / Ogg / MP4 tag + cover-art reader (no dependencies)
-  util.js           artist/album grouping, ranking, formatting
-  idb.js            IndexedDB helper
-  audio/engine.js   Web Audio graph: EQ, limiter, analyser
-  store/            library.jsx (files, covers, playlists, profile, stats) · player.jsx (queue, playback) · backup.js (export/import)
-  components/       PlayerBar, FullScreen, SearchBox, EditDialog, CoverEditor, Panels, Visualizer, ui
-  views/            Home, Search, Artists, Detail (artist/album), Library (playlists, device files), Videos, Profile
-client/test/        node:test unit tests
-desktop/            Electron shell + installer config for the Windows app
-mobile/             Capacitor config for the Android app
+  tags.js            ID3 / FLAC / Ogg / MP4 tag and cover-art reader (no dependencies)
+  util.js            grouping, ranking, fingerprints, colour helpers
+  idb.js             IndexedDB helper
+  audio/engine.js    Web Audio graph: equalizer, limiter, analyser
+  store/             library.jsx (files, covers, playlists, profile, stats), player.jsx (queue, playback), backup.js
+  components/        player bar, full screen, search, cover editor, panels, …
+  views/             Home, Search, Artists, Artist/Album, Playlists, Device files, Videos, Profile
+client/test/         node:test unit tests
+desktop/             Electron shell + installer config (Windows)
+mobile/              Capacitor config (Android)
+.github/workflows/   pages.yml (website), apps.yml (.exe / .apk), ci.yml
 ```
 
-## Notes
+**Automatic builds.** Every push to `main` publishes the website to GitHub Pages and builds the Windows and Android apps, attaching them to the **downloads** release (`apps.yml`). Set the repository's *Settings → Pages → Source* to **GitHub Actions** once.
 
-- Listening time counts seconds actually played; a "play" counts after about 30 seconds (or 60% of a short song).
-- Videos aren't routed through the equalizer. MKV/AVI usually can't be played by browsers.
-- Only add music and videos you have the right to use.
+**Hosting elsewhere.** `BASE_PATH=/your-path/ npm run build` produces a static site in `client/dist` that any static host can serve.
+
+Rune is an independent project and isn't affiliated with any streaming service.
 
 ## License
 
-MIT – see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).

@@ -1,15 +1,80 @@
 // Profile: photo, name, username, a top-10 songs chart, and backup (export / import).
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLibrary } from '../store/library.jsx';
+import { usePlayer } from '../store/player.jsx';
 import { fmtListened } from '../util.js';
 import { CoverEditor } from '../components/CoverEditor.jsx';
-import { Icon, Status } from '../components/ui.jsx';
+import { Icon, IconButton, Status } from '../components/ui.jsx';
 
-/** Link to the Windows / Android downloads when the site is hosted on GitHub Pages (https://<owner>.github.io/<repo>/). */
-function downloadsUrl() {
+/** On the GitHub Pages site, works out which repository hosts it: https://<owner>.github.io/<repo>/ */
+function hostRepo() {
   if (!location.hostname.endsWith('.github.io')) return null;
-  const owner = location.hostname.split('.')[0], repo = location.pathname.split('/')[1];
-  return repo ? `https://github.com/${owner}/${repo}/releases/tag/downloads` : null;
+  const repo = location.pathname.split('/')[1];
+  return repo ? { owner: location.hostname.split('.')[0], repo } : null;
+}
+
+const APP_LABELS = {
+  'Rune-Setup.exe': 'Windows installer (.exe)',
+  'Rune-Portable.exe': 'Windows portable (.exe)',
+  'Rune.apk': 'Android app (.apk)',
+};
+
+/** Asks GitHub which app files have been published, so we never send people to a "404" page. */
+function useAppDownloads() {
+  const host = hostRepo();
+  const [state, setState] = useState({ status: host ? 'loading' : 'none', files: [] });
+  useEffect(() => {
+    if (!host) return undefined;
+    let live = true;
+    fetch(`https://api.github.com/repos/${host.owner}/${host.repo}/releases/tags/downloads`, { headers: { Accept: 'application/vnd.github+json' } })
+      .then((r) => (r.status === 404 ? { assets: [] } : r.ok ? r.json() : Promise.reject(new Error('api'))))
+      .then((rel) => {
+        const files = (rel.assets || []).filter((a) => APP_LABELS[a.name]).map((a) => ({ label: APP_LABELS[a.name], url: a.browser_download_url, mb: Math.max(1, Math.round(a.size / 1e6)) }));
+        if (live) setState({ status: files.length ? 'ready' : 'missing', files });
+      })
+      .catch(() => live && setState({ status: 'error', files: [] }));
+    return () => { live = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return { ...state, host };
+}
+
+function DeleteDialog({ onClose }) {
+  const lib = useLibrary();
+  const player = usePlayer();
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const esc = (e) => e.key === 'Escape' && !busy && onClose();
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [busy, onClose]);
+
+  const go = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    player.pause();
+    await lib.deleteEverything();   // reloads the page when done
+  };
+  return (
+    <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
+      <form className="modal wide" onSubmit={go} role="alertdialog" aria-modal="true" aria-labelledby="del-title">
+        <IconButton icon="close" label="Close" className="modal-x" type="button" onClick={onClose} disabled={busy} />
+        <h2 id="del-title">Delete your account and all data?</h2>
+        <p>This permanently removes everything Rune keeps on this device:</p>
+        <ul className="del-list">
+          <li>your profile, photo and username</li>
+          <li>all songs and music videos stored in Rune, with their covers, artists and albums</li>
+          <li>playlists, listening stats, search history and settings</li>
+        </ul>
+        <p className="muted">The original files on your device aren’t touched. This can’t be undone — export a backup first if you might want it back.</p>
+        <label className="field"><span>Type DELETE to confirm</span><input value={text} onChange={(e) => setText(e.target.value)} autoFocus autoComplete="off" /></label>
+        <div className="row end">
+          <button type="button" className="btn ghost" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn danger-solid" disabled={text.trim() !== 'DELETE' || busy}>{busy ? 'Deleting…' : 'Delete everything'}</button>
+        </div>
+      </form>
+    </div>
+  );
 }
 
 export default function ProfilePage() {
@@ -18,7 +83,9 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(profile);
   const [busy, setBusy] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const importInput = useRef(null);
+  const apps = useAppDownloads();
 
   const top = useMemo(() => Object.entries(stats)
     .map(([id, s]) => ({ track: lib.byId.get(id), ...s }))
@@ -89,11 +156,23 @@ export default function ProfilePage() {
         {total > 0 && <button className="link-btn" onClick={() => { if (confirm('Reset all listening stats?')) lib.resetStats(); }}>Reset stats</button>}
       </section>
 
-      {downloadsUrl() && (
+      {apps.host && (
         <section className="stats backup" aria-labelledby="apps-title">
           <h2 id="apps-title">Get the app</h2>
-          <p className="muted">Prefer a real app? Download Rune for Windows (.exe) or Android (.apk) — same features, works offline, and you can move your data over with Export / Import below.</p>
-          <div className="row"><a className="btn" href={downloadsUrl()} target="_blank" rel="noreferrer"><Icon name="download" size={16} /> Downloads</a></div>
+          <p className="muted">Prefer a real app? Rune also comes as a Windows program and an Android app — same features, works offline.</p>
+          {apps.status === 'loading' && <p className="muted"><span className="spinner" /> Checking for downloads…</p>}
+          {apps.status === 'ready' && (
+            <div className="row">
+              {apps.files.map((f) => (
+                <a key={f.url} className="btn" href={f.url}><Icon name="download" size={16} /> {f.label} <span className="muted-on-btn">{f.mb} MB</span></a>
+              ))}
+            </div>
+          )}
+          {apps.status === 'missing' && <p className="muted">The app downloads haven’t been published yet. Check back soon.</p>}
+          {apps.status === 'error' && (
+            <p className="muted">Couldn’t check for downloads right now. You can also find them on the project’s{' '}
+              <a href={`https://github.com/${apps.host.owner}/${apps.host.repo}#download`} target="_blank" rel="noreferrer">GitHub page</a>.</p>
+          )}
         </section>
       )}
 
@@ -111,6 +190,13 @@ export default function ProfilePage() {
         </div>
         <p className="muted small">Tip: add your songs on the new device first, then import — they’re matched by file name and size (or title and artist).</p>
       </section>
+
+      <section className="stats danger-zone" aria-labelledby="danger-title">
+        <h2 id="danger-title">Delete account</h2>
+        <p className="muted">Removes your profile and everything Rune stores on this device — songs, videos, covers, playlists and stats. There’s no online account; this just wipes the app clean.</p>
+        <button className="btn ghost danger" onClick={() => setDeleting(true)}><Icon name="trash" size={16} /> Delete account &amp; all data</button>
+      </section>
+      {deleting && <DeleteDialog onClose={() => setDeleting(false)} />}
     </div>
   );
 }

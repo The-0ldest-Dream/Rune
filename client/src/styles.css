@@ -410,3 +410,11 @@ button.video-thumb { width: 100%; }
   .app:not(.with-panel) .pb-right { display: none; }
   .app:not(.with-panel) .playerbar { padding-bottom: 8px; }
 }
+
+/* ---------- v6: delete account, downloads card ---------- */
+.danger-zone { border: 1px solid rgba(255,107,107,.35); margin-top: 16px; }
+.danger-zone h2 { margin-bottom: 8px; }
+.btn.danger-solid { background: var(--danger); border-color: var(--danger); color: #000; }
+.btn.danger-solid:disabled { opacity: .4; }
+.del-list { margin: 0 0 12px; padding-left: 20px; color: var(--muted); }
+.muted-on-btn { font-weight: 500; opacity: .65; }

@@ -1,6 +1,6 @@
 // Library store: songs, videos, covers, playlists, profile and listening stats — all kept on this device (IndexedDB).
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { idb } from '../idb.js';
+import { idb, wipeDatabase } from '../idb.js';
 import { readTags } from '../tags.js';
 import { UNKNOWN, albumKeyOf, artistKeyOf, findMatch, fpOf, groupTracks, resizeImage, sigKeyOf } from '../util.js';
 import { buildExport, parseExport, planImport } from './backup.js';
@@ -369,6 +369,21 @@ export function LibraryProvider({ children }) {
     return plan.summary;
   }, [profile, release, persistPlaylists, persistProfile, flushStats]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ---- delete everything Rune stores on this device ----
+  const deleteEverything = useCallback(async () => {
+    dirty.current = false;
+    try { await wipeDatabase(); } catch { /* reload below starts clean anyway */ }
+    // Only touch Rune's own entries: other sites on the same github.io address share this browser storage.
+    Object.keys(localStorage).filter((k) => k.startsWith('rune.')).forEach((k) => localStorage.removeItem(k));
+    try { for (const k of await caches.keys()) if (k.startsWith('rune-')) await caches.delete(k); } catch { /* no Cache API */ }
+    try {
+      const scope = new URL(import.meta.env.BASE_URL, location.href).href;
+      for (const reg of await navigator.serviceWorker.getRegistrations()) if (reg.scope === scope) await reg.unregister();
+    } catch { /* no service worker */ }
+    location.hash = '#/';
+    location.reload();
+  }, []);
+
   // ---- playback source ----
   const resolveSrc = useCallback(async (track) => {
     const rec = recMap.current.get(track.id) || (await idb.get('files', track.id));
@@ -385,7 +400,7 @@ export function LibraryProvider({ children }) {
     addFiles, addVideos, removeFile: removeRecord, removeVideo: removeRecord, renameVideo, updateTracks, resolveSrc, videoBlob,
     setCoverBlob, removeCover, artBlob, setAvatar, exportData, importData,
     createPlaylist, renamePlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, removeTrackFromPlaylist,
-    saveProfile, beginListen, recordListen, resetStats,
+    saveProfile, beginListen, recordListen, resetStats, deleteEverything,
   }), [ready, tracks, byId, videos, playlists, groups, profile, avatarUrl, stats, notice, editing, coverBlobs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
