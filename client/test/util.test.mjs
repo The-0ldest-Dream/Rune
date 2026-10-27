@@ -39,3 +39,16 @@ test('dominant colour comes from the whole cover, favouring vivid colours over w
   const grey = Uint8ClampedArray.from(px(128, 128, 128, 400));
   assert.deepEqual(pickDominant(grey).map(Math.round), [128, 128, 128]);
 });
+
+import { THEMES, buildVars, luminance } from '../src/themes.js';
+const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+test('every theme is readable', () => {
+  for (const t of THEMES) {
+    const v = buildVars(t.spec);
+    assert.ok(contrast(v['--text'], v['--panel']) >= 7, `${t.id}: text on panel ${contrast(v['--text'], v['--panel']).toFixed(1)}`);
+    assert.ok(contrast(v['--muted'], v['--panel']) >= 3.5, `${t.id}: muted text ${contrast(v['--muted'], v['--panel']).toFixed(1)}`);
+    assert.ok(contrast(v['--accent-ink'], v['--accent']) >= 4.5, `${t.id}: text on accent`);
+    assert.ok(contrast(v['--accent'], v['--panel']) >= 3, `${t.id}: accent on panel ${contrast(v['--accent'], v['--panel']).toFixed(1)}`);
+    assert.ok(contrast(v['--on-text'], v['--text']) >= 7, `${t.id}: button text`);
+  }
+});

@@ -11,7 +11,7 @@ export function PlaylistsPage() {
     <>
       <div className="section-head">
         <h1>Your playlists</h1>
-        <button className="btn" onClick={() => { location.hash = `#/playlist/${lib.createPlaylist(`Playlist ${lib.playlists.length + 1}`).id}`; }}>
+        <button className="btn" onClick={() => { location.hash = `#/playlist/${lib.createPlaylist(`Playlist ${lib.playlists.filter((x) => !x.system).length + 1}`).id}`; }}>
           <Icon name="plus" size={16} /> New playlist
         </button>
       </div>
@@ -47,19 +47,21 @@ export function PlaylistPage({ id }) {
         <KindCover kind="playlist" id={p.id} src={p.cover} label={p.name} className="hero-cover" candidates={p.tracks} />
         <div>
           <span className="muted">Playlist</span>
-          <input className="title-input" value={name ?? p.name} aria-label="Playlist name"
+          <input className="title-input" value={name ?? p.name} aria-label="Playlist name" readOnly={p.system}
             onChange={(e) => setName(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
           <p className="muted">{p.tracks.length} songs</p>
         </div>
       </header>
       <div className="actions">
         <button className="play-btn big" aria-label="Play playlist" disabled={!p.tracks.length} onClick={() => playQueue(p.tracks, 0, p.name)}><Icon name="play" size={28} /></button>
-        <button className="btn ghost danger" onClick={() => { if (confirm(`Delete “${p.name}”?`)) { lib.deletePlaylist(p.id); location.hash = '#/library'; } }}>
-          <Icon name="trash" size={16} /> Delete playlist
-        </button>
+        {!p.system && (
+          <button className="btn ghost danger" onClick={() => { if (confirm(`Delete “${p.name}”?`)) { lib.deletePlaylist(p.id); location.hash = '#/library'; } }}>
+            <Icon name="trash" size={16} /> Delete playlist
+          </button>
+        )}
       </div>
       <TrackList tracks={p.tracks} label={p.name} onRemove={(i) => lib.removeFromPlaylist(p.id, i)} removeLabel="Remove from playlist"
-        emptyText="This playlist is empty. Add songs from any song’s ⋯ menu." />
+        emptyText={p.system ? 'No liked songs yet. Tap the heart next to a song’s name to save it here.' : 'This playlist is empty. Add songs from any song’s ⋯ menu.'} />
     </>
   );
 }

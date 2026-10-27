@@ -8,7 +8,7 @@ import { Cover, Icon, IconButton } from './ui.jsx';
 
 const IDLE_MS = 5000;
 
-export default function FullScreen({ onClose }) {
+export default function FullScreen({ onClose, winFull = false, onToggleWindow }) {
   const { current, label } = usePlayer();
   const [view, setView] = useState('cover');
   const [immersive, setImmersive] = useState(false);
@@ -43,7 +43,8 @@ export default function FullScreen({ onClose }) {
           <IconButton icon="album" label="Show cover" active={view === 'cover'} onClick={() => setView('cover')} />
           <IconButton icon="eq" label="Show visualizer" active={view === 'viz'} onClick={() => setView('viz')} />
           <span className="fs-sep" />
-          <IconButton icon="shrink" label="Exit full screen" onClick={onClose} />
+          {onToggleWindow && <IconButton icon={winFull ? 'shrink' : 'expand'} label={winFull ? 'Leave window full screen' : 'Full screen window'} onClick={onToggleWindow} />}
+          <IconButton icon="collapseArrow" label="Close expanded view" onClick={onClose} />
         </div>
       </header>
       <div className="fs-body">

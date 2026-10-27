@@ -153,6 +153,7 @@ export function PlayerProvider({ children }) {
     const tracks = all.filter((t) => !t.missing);              // faded songs (not on this device) can't play
     if (!tracks.length) { libRef.current.toast('None of these songs are on this device yet.'); return; }
     start = Math.max(0, tracks.indexOf(chosen));
+    if (label === 'Search results' || label === 'Recently played') libRef.current.recordSearchPlay(chosen.id);
     let items = tracks.map(withQid);
     origOrder.current = items.map((t) => t.qid);
     let index = start;
@@ -247,7 +248,7 @@ export function PlayerProvider({ children }) {
     return () => clearInterval(t);
   }, [playing]);
 
-  // ---- OS media controls (lock screen, headset keys) ----
+  // ---- OS media controls: media keys, Windows volume flyout, lock screen, headset buttons ----
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
     const ms = navigator.mediaSession;
@@ -256,13 +257,35 @@ export function PlayerProvider({ children }) {
         title: current.title, artist: current.artist, album: current.album,
         artwork: current.cover ? [{ src: current.cover, sizes: '512x512', type: /svg/.test(current.cover) ? 'image/svg+xml' : 'image/jpeg' }] : [],
       });
-    }
-    ms.setActionHandler('play', toggle);
-    ms.setActionHandler('pause', toggle);
-    ms.setActionHandler('previoustrack', prev);
-    ms.setActionHandler('nexttrack', next);
-    ms.setActionHandler('seekto', (d) => d.seekTime != null && seek(d.seekTime));
-  }, [current, toggle, prev, next, seek]);
+    } else ms.metadata = null;
+    const set = (action, fn) => { try { ms.setActionHandler(action, fn); } catch { /* action not supported here */ } };
+    set('play', () => { engine.ensure(); audio.play().catch(() => {}); });
+    set('pause', () => audio.pause());
+    set('stop', () => { audio.pause(); audio.currentTime = 0; });
+    set('previoustrack', prev);
+    set('nexttrack', next);
+    set('seekto', (d) => d.seekTime != null && seek(d.seekTime));
+    set('seekbackward', (d) => seek(Math.max(0, audio.currentTime - (d.seekOffset || 10))));
+    set('seekforward', (d) => seek(Math.min(audio.duration || 0, audio.currentTime + (d.seekOffset || 10))));
+  }, [current, prev, next, seek, audio, engine]);
+  // The OS needs to know whether we are playing, or its play/pause buttons show the wrong state (or none at all).
+  useEffect(() => {
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = current ? (playing ? 'playing' : 'paused') : 'none';
+  }, [playing, current]);
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !(duration > 0)) return;
+    try { navigator.mediaSession.setPositionState({ duration, position: Math.min(time, duration), playbackRate: 1 }); } catch { /* unsupported */ }
+  }, [Math.floor(time), duration]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- Windows app: taskbar thumbnail buttons (previous / play-pause / next) talk to us through the preload bridge ----
+  useEffect(() => {
+    const d = window.runeDesktop;
+    if (!d) return undefined;
+    return d.onTransport((cmd) => { if (cmd === 'toggle') toggle(); else if (cmd === 'next') next(); else if (cmd === 'prev') prev(); });
+  }, [toggle, next, prev]);
+  useEffect(() => {
+    window.runeDesktop?.sendState({ playing, hasTrack: !!current });
+  }, [playing, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value = useMemo(() => ({
     engine, current, queue, index: st.index, label: st.label, playing, loading, time, duration, volume, muted, shuffle, repeat,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { usePlayer } from '../store/player.jsx';
-import { AddToPlaylist, Cover, Icon, IconButton, fmtTime } from './ui.jsx';
+import { AddToPlaylist, Cover, Icon, IconButton, LikeButton, fmtTime } from './ui.jsx';
 
 const pct = (v, max) => `${max ? Math.min(100, (v / max) * 100) : 0}%`;
 
@@ -22,6 +22,7 @@ export default function PlayerBar({ panel, setPanel, onFull, full }) {
             </span>
           </button>
         )}
+        {current && <LikeButton track={current} />}
       </div>
 
       <div className="pb-center">
@@ -51,7 +52,7 @@ export default function PlayerBar({ panel, setPanel, onFull, full }) {
         <IconButton icon={p.muted || p.volume === 0 ? 'mute' : 'volume'} label={p.muted ? 'Unmute' : 'Mute'} onClick={p.toggleMute} />
         <input className="vol" type="range" min="0" max="1" step="0.01" value={p.muted ? 0 : p.volume} aria-label="Volume"
           onChange={(e) => p.setVolume(Number(e.target.value))} style={{ '--p': pct(p.muted ? 0 : p.volume, 1) }} />
-        <IconButton icon={full ? 'shrink' : 'expand'} label={full ? 'Exit full screen' : 'Full screen'} onClick={onFull} disabled={!current && !full} />
+        <IconButton icon={full ? 'shrink' : 'expand'} label={full ? 'Exit full screen' : 'Full screen window'} onClick={onFull} disabled={!current && !full} />
       </div>
     </footer>
   );

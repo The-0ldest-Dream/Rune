@@ -6,7 +6,7 @@ import SearchBox from './components/SearchBox.jsx';
 import EditDialog from './components/EditDialog.jsx';
 import FullScreen from './components/FullScreen.jsx';
 import { Equalizer, NowPlaying, Queue } from './components/Panels.jsx';
-import { Avatar, Icon, IconButton } from './components/ui.jsx';
+import { Avatar, Cover, Icon, IconButton } from './components/ui.jsx';
 import { DEFAULT_BACKDROP, backdropFor, backdropFromHue, dominantColor, hueFor } from './util.js';
 import Home from './views/Home.jsx';
 import Search from './views/Search.jsx';
@@ -40,25 +40,43 @@ const NAV = [
   ['videos', 'Upload file', 'video', '#/videos', 'desk-only'],   // on phones it lives behind an icon in Device files
 ];
 
+function useMedia(query) {
+  const [m, setM] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setM(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, [query]);
+  return m;
+}
+
+const LAYOUT_KEY = 'rune.layout';
+const DEF = { side: 240, panel: 340 };
+const COMPACT_W = 76, MIN_SIDE = 190, MAX_SIDE = 420, MIN_PANEL = 270, CLOSE_BELOW = 210;
+const loadLayout = () => { try { return { ...DEF, ...JSON.parse(localStorage.getItem(LAYOUT_KEY)) }; } catch { return { ...DEF }; } };
+
 const MOBILE_Q = '(max-width: 800px)';
 const isMobile = () => window.matchMedia(MOBILE_Q).matches;
 
-function Sidebar({ route, onNavigate }) {
+function Sidebar({ route, onNavigate, compact }) {
   const lib = useLibrary();
   const section = { playlist: 'library', artist: 'artists', album: 'artists', ...(isMobile() ? { videos: 'local' } : {}) }[route.name] || route.name;
   return (
-    <nav className="sidebar" aria-label="Main">
-      <a className="brand" href="#/"><img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width="28" height="28" /> Rune</a>
+    <nav className={`sidebar ${compact ? 'compact' : ''}`} aria-label="Main">
+      <a className="brand" href="#/"><img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width="28" height="28" /><span>Rune</span></a>
       <ul>
         {NAV.map(([key, label, icon, href, cls]) => (
-          <li key={key} className={cls || ''}><a href={href} onClick={onNavigate} className={section === key ? 'active' : ''} aria-current={section === key ? 'page' : undefined}><Icon name={icon} size={22} /><span>{label}</span></a></li>
+          <li key={key} className={cls || ''}><a href={href} onClick={onNavigate} title={label} className={section === key ? 'active' : ''} aria-current={section === key ? 'page' : undefined}><Icon name={icon} size={22} /><span>{label}</span></a></li>
         ))}
       </ul>
       <div className="side-playlists">
         <h3>Playlists</h3>
         {lib.playlists.length === 0 && <p className="muted small">Playlists you create appear here.</p>}
         {lib.playlists.map((p) => (
-          <a key={p.id} href={`#/playlist/${p.id}`} onClick={onNavigate} className={route.name === 'playlist' && route.arg === p.id ? 'active' : ''}>{p.name}</a>
+          <a key={p.id} href={`#/playlist/${p.id}`} onClick={onNavigate} title={p.name} className={route.name === 'playlist' && route.arg === p.id ? 'active' : ''}>
+            {compact ? <Cover src={p.cover} seed={p.id} label={p.name} className="thumb" /> : p.name}
+          </a>
         ))}
       </div>
     </nav>
@@ -121,8 +139,14 @@ function useBackdrop(current) {
 function Shell() {
   const route = useRoute();
   const { toggle, current } = usePlayer();
+  const wide = useMedia('(min-width: 1101px)');
   const [panel, setPanel] = useState({ open: window.innerWidth > 1100, tab: 'now' });
   const [full, setFull] = useState(false);
+  const [winFull, setWinFull] = useState(!!document.fullscreenElement);
+  const viaWindow = useRef(false);               // true when the full-screen view was opened together with browser full screen
+  const [layout, setLayout] = useState(loadLayout);
+  const [compact, setCompact] = useState(() => loadLayout().side < 150);
+  const [dragging, setDragging] = useState('');
   const appRef = useRef(null);
   const bd = useBackdrop(current);
 
@@ -132,7 +156,6 @@ function Shell() {
     setPanel((p) => (p.open ? { ...p, open: false } : p));
     setFull(false);
   }, []);
-  const closeFull = useCallback(() => setFull(false), []);
   useEffect(() => { minimise(); }, [route.name, route.arg, minimise]);
 
   // Starting a music video opens Now playing so the picture is visible.
@@ -147,13 +170,29 @@ function Shell() {
     return () => window.removeEventListener('keydown', onKey);
   }, [toggle]);
 
-  // Full screen: our overlay, plus the browser's real full-screen mode when allowed.
+  // ---- full screen ----
+  // The arrow in the panel opens the expanded view INSIDE the app. The button in the player bar also makes the window itself full screen.
+  const exitWindowFs = () => { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); };
+  const openExpanded = useCallback(() => setFull(true), []);
+  const closeFull = useCallback(() => {
+    setFull(false);
+    if (viaWindow.current) { viaWindow.current = false; exitWindowFs(); }
+  }, []);
+  const toggleBarFullscreen = () => {
+    if (full) { closeFull(); return; }
+    viaWindow.current = true;
+    setFull(true);
+    document.documentElement.requestFullscreen?.().catch(() => {});
+  };
+  const toggleWindowFullscreen = useCallback(() => {
+    if (document.fullscreenElement) exitWindowFs();
+    else { viaWindow.current = true; document.documentElement.requestFullscreen?.().catch(() => {}); }
+  }, []);
   useEffect(() => {
-    if (full) document.documentElement.requestFullscreen?.().catch(() => {});
-    else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-  }, [full]);
-  useEffect(() => {
-    const on = () => { if (!document.fullscreenElement) setFull(false); };
+    const on = () => {
+      setWinFull(!!document.fullscreenElement);
+      if (!document.fullscreenElement && viaWindow.current) { viaWindow.current = false; setFull(false); }
+    };
     document.addEventListener('fullscreenchange', on);
     return () => document.removeEventListener('fullscreenchange', on);
   }, []);
@@ -169,12 +208,59 @@ function Shell() {
     return () => ro.disconnect();
   }, []);
 
+  // ---- resizable panes (drag the thin line between them) ----
+  const setVar = (name, px) => appRef.current?.style.setProperty(name, `${px}px`);
+  const startDrag = (which) => (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const el = e.currentTarget, startX = e.clientX, start = which === 'side' ? layout.side : layout.panel;
+    el.setPointerCapture(e.pointerId);
+    setDragging(which);
+    let value = start;
+    const maxPanel = Math.min(680, window.innerWidth * 0.55);
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      if (which === 'side') {
+        const w = start + dx;
+        value = w < 130 ? COMPACT_W : Math.min(MAX_SIDE, Math.max(MIN_SIDE, w));   // icon-only column, or a normal sidebar
+        setVar('--side-w', value);
+        setCompact(value < 150);
+      } else {
+        const w = start - dx;
+        value = w < CLOSE_BELOW ? 0 : Math.min(maxPanel, Math.max(MIN_PANEL, w));  // dragged to the edge → closes
+        setVar('--panel-w', value);
+      }
+    };
+    const up = () => {
+      el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up);
+      setDragging('');
+      if (which === 'side') commit({ ...layout, side: value });
+      else if (value === 0) { setVar('--panel-w', layout.panel); setPanel((p) => ({ ...p, open: false })); }
+      else commit({ ...layout, panel: value });
+    };
+    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  };
+  const commit = (next) => {
+    setLayout(next);
+    try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(next)); } catch { /* storage blocked */ }
+  };
+  const nudge = (which) => (e) => {
+    const d = { ArrowLeft: -16, ArrowRight: 16 }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    if (which === 'side') {
+      const side = Math.min(MAX_SIDE, Math.max(COMPACT_W, layout.side + d)); setCompact(side < 150); commit({ ...layout, side: side < 130 ? COMPACT_W : Math.max(MIN_SIDE, side) });
+    } else commit({ ...layout, panel: Math.min(680, Math.max(MIN_PANEL, layout.panel - d)) });
+  };
+  const resetPane = (which) => () => { commit({ ...layout, [which]: DEF[which] }); setVar(`--${which === 'side' ? 'side' : 'panel'}-w`, DEF[which]); if (which === 'side') setCompact(false); };
+
   const titles = { now: 'Now playing', queue: 'Queue', eq: 'Equalizer' };
   const tint = panel.open && panel.tab === 'now' && current;
   return (
-    <div ref={appRef} style={{ '--c1': bd.c1, '--c2': bd.c2 }}
-      className={`app ${panel.open ? 'with-panel' : ''} ${current ? '' : 'no-bar'} ${tint ? 'np-tint' : ''}`}>
-      <Sidebar route={route} onNavigate={minimise} />
+    <div ref={appRef}
+      style={{ '--c1': bd.c1, '--c2': bd.c2, '--side-w': `${layout.side}px`, '--panel-w': `${layout.panel}px` }}
+      className={`app ${panel.open ? 'with-panel' : ''} ${current ? '' : 'no-bar'} ${tint ? 'np-tint' : ''} ${dragging ? 'resizing' : ''}`}>
+      <Sidebar route={route} onNavigate={minimise} compact={compact && wide} />
       <main className="main">
         <TopBar route={route} />
         <div className="content"><View route={route} /></div>
@@ -183,7 +269,10 @@ function Shell() {
         <aside className="side" aria-label="Player panel">
           <div className="side-head">
             <h2>{titles[panel.tab]}</h2>
-            <IconButton icon="close" label="Close panel" onClick={() => setPanel({ ...panel, open: false })} />
+            <span className="side-head-actions">
+              {current && <IconButton icon="expandArrow" label="Expand now playing" onClick={openExpanded} />}
+              <IconButton icon="close" label="Close panel" onClick={() => setPanel({ ...panel, open: false })} />
+            </span>
           </div>
           <div className="side-body">
             {panel.tab === 'now' && <NowPlaying />}
@@ -192,8 +281,16 @@ function Shell() {
           </div>
         </aside>
       )}
-      {full && <FullScreen onClose={closeFull} />}
-      <PlayerBar panel={panel} setPanel={setPanel} full={full} onFull={() => setFull((f) => !f)} />
+      {wide && (
+        <div className={`resizer left ${dragging === 'side' ? 'dragging' : ''}`} role="separator" aria-orientation="vertical" aria-label="Resize sidebar" tabIndex={0}
+          onPointerDown={startDrag('side')} onDoubleClick={resetPane('side')} onKeyDown={nudge('side')} />
+      )}
+      {wide && panel.open && (
+        <div className={`resizer right ${dragging === 'panel' ? 'dragging' : ''}`} role="separator" aria-orientation="vertical" aria-label="Resize player panel" tabIndex={0}
+          onPointerDown={startDrag('panel')} onDoubleClick={resetPane('panel')} onKeyDown={nudge('panel')} />
+      )}
+      {full && <FullScreen onClose={closeFull} winFull={winFull} onToggleWindow={toggleWindowFullscreen} />}
+      <PlayerBar panel={panel} setPanel={setPanel} full={full} onFull={toggleBarFullscreen} />
       <Toast />
       <EditDialog />
     </div>

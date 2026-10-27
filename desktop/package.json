@@ -2,7 +2,7 @@
   "name": "rune-desktop",
   "productName": "Rune",
   "version": "2.0.0",
-  "description": "Rune for Windows – a private, offline-first music and music-video player.",
+  "description": "Rune for Windows \u2013 a private, offline-first music and music-video player.",
   "main": "main.js",
   "author": "Rune contributors",
   "license": "MIT",
@@ -18,11 +18,24 @@
   "build": {
     "appId": "com.rune.music",
     "productName": "Rune",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "package.json", "app/**/*"],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "build/icon.png",
+      "build/thumb/*.png",
+      "app/**/*"
+    ],
     "win": {
       "icon": "build/icon.ico",
-      "target": ["nsis", "portable"]
+      "target": [
+        "nsis",
+        "portable"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -32,6 +45,8 @@
       "shortcutName": "Rune",
       "artifactName": "Rune-Setup.${ext}"
     },
-    "portable": { "artifactName": "Rune-Portable.${ext}" }
+    "portable": {
+      "artifactName": "Rune-Portable.${ext}"
+    }
   }
 }

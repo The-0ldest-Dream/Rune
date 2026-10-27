@@ -38,10 +38,13 @@ If a link says "not found", the latest build is still being prepared — try aga
 - 🖼️ **Automatic covers, artists and albums** — cover art, title, artist and album are read from your files. Two or more songs by the same artist create an artist page; two or more from the same album create an album.
 - ✏️ **Fix and personalise** — edit song info (one song or many at once) and set your own cover for any song, album, artist, playlist or your profile photo, with crop and zoom.
 - 🎬 **Music videos too** — add videos and watch them in the same player as your songs.
-- 🎚️ **Equalizer & visualizer** — bass / mid / treble, a 10-band equalizer with presets, and live visualizer bars.
+- 🎚️ **Equalizer & visualizer** — bass / mid / treble, a 10-band equalizer with presets and a live response curve, automatic headroom so boosts never distort, and visualizer bars.
+- 🎨 **Themes** — 11 hand-tuned themes (dark and light) plus a custom option where you pick your own colours: *Profile → Appearance*.
+- 🪟 **Your layout** — drag the thin line between the sidebar, the page and the player panel to resize them (the sidebar collapses to a slim icon column). Double-click a line to reset.
+- ❤️ **Liked Songs** — tap the heart next to the song name to save it to the built-in *Liked Songs* playlist.
 - 📋 **Playlists and queue** — create playlists, add songs with the **+** button, reorder the queue by dragging.
-- 🔍 **Fast search** — songs, artists, playlists and videos, with recent searches. Works with no internet.
-- 🖥️ **Full-screen player** — a big cover on a backdrop coloured from the artwork; after 5 quiet seconds it becomes a clean, immersive view.
+- 🔍 **Fast search** — songs, artists, playlists and videos. The search bar shows the songs you recently played from search. Works with no internet.
+- 🖥️ **Expanded & full-screen player** — the arrow in the player panel opens a big cover view inside the app; the full-screen button in the player bar also fills the whole screen. The backdrop is coloured from the artwork; after 5 quiet seconds it becomes a clean, immersive view.
 - 📊 **Your stats** — see your top 10 most-listened songs on your profile; Home shows your top playlists, albums and most-played songs.
 - 💾 **Backup & sync between devices** — export your data (everything except the song files) and import it on another device.
 
@@ -77,6 +80,8 @@ Your songs themselves are never exported — only the information around them.
 **The Android app stops when the screen is off.** Android can pause apps in the background. Turn off battery optimisation for Rune, or keep the screen on.
 
 **Videos don't play.** MP4 (H.264) and WebM work everywhere; MKV and AVI usually don't work in browsers.
+
+**Media keys and the taskbar.** Keyboard media keys and the system volume pop-up work in the browser and the apps. The Windows app also adds Previous / Play-Pause / Next buttons to its taskbar preview (installed websites can't do that).
 
 **Is it free?** Yes, and open source (MIT). Please only add music and videos you have the right to use.
 

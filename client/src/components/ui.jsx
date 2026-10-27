@@ -30,6 +30,10 @@ const PATHS = {
   more: 'M6 10a2 2 0 100 4 2 2 0 000-4zm12 0a2 2 0 100 4 2 2 0 000-4zm-6 0a2 2 0 100 4 2 2 0 000-4z',
   album: 'M12 2a10 10 0 100 20 10 10 0 000-20zm0 14a4 4 0 110-8 4 4 0 010 8zm0-5.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z',
   panel: 'M3 4h18v16H3V4zm12 2v12h4V6h-4z',
+  expandArrow: 'M21 11V3h-8l3.29 3.29-10 10L3 13v8h8l-3.29-3.29 10-10z',
+  collapseArrow: 'M22 3.41L16.71 8.7 20 12h-8V4l3.29 3.29L20.59 2 22 3.41zM3.41 22l5.29-5.29L12 20v-8H4l3.29 3.29L2 20.59 3.41 22z',
+  heart: 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
+  heartOutline: 'M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z',
   edit: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
   expand: 'M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z',
   shrink: 'M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z',
@@ -124,7 +128,7 @@ export function TrackMenu({ track, onRemove, removeLabel = 'Remove' }) {
           ) : (
             <>
               <button role="menuitem" onClick={() => setView('main')}>‹ Back</button>
-              <button role="menuitem" onClick={done(() => { const p = lib.createPlaylist(`Playlist ${lib.playlists.length + 1}`, [track.id]); lib.toast(`Created “${p.name}”.`); })}>
+              <button role="menuitem" onClick={done(() => { const p = lib.createPlaylist(`Playlist ${lib.playlists.filter((x) => !x.system).length + 1}`, [track.id]); lib.toast(`Created “${p.name}”.`); })}>
                 + New playlist
               </button>
               {lib.playlists.map((p) => (
@@ -137,6 +141,17 @@ export function TrackMenu({ track, onRemove, removeLabel = 'Remove' }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Heart: adds the song to / removes it from the built-in Liked Songs playlist. */
+export function LikeButton({ track, size = 20 }) {
+  const lib = useLibrary();
+  if (!track || track.kind === 'video') return null;
+  const liked = lib.isLiked(track.id);
+  return (
+    <IconButton icon={liked ? 'heart' : 'heartOutline'} size={size} active={liked} aria-pressed={liked}
+      label={liked ? 'Remove from Liked Songs' : 'Save to Liked Songs'} onClick={() => lib.toggleLike(track.id)} />
   );
 }
 
@@ -168,7 +183,7 @@ export function AddToPlaylist({ track, up = false, size = 20 }) {
       {open && (
         <div className={`menu ${up ? 'up' : ''}`} role="menu">
           <div className="menu-title">Add to playlist</div>
-          <button role="menuitem" onClick={() => { const p = lib.createPlaylist(`Playlist ${lib.playlists.length + 1}`, [track.id]); lib.toast(`Created “${p.name}”.`); setOpen(false); }}>+ New playlist</button>
+          <button role="menuitem" onClick={() => { const p = lib.createPlaylist(`Playlist ${lib.playlists.filter((x) => !x.system).length + 1}`, [track.id]); lib.toast(`Created “${p.name}”.`); setOpen(false); }}>+ New playlist</button>
           {lib.playlists.map((p) => (
             <button key={p.id} role="menuitem" onClick={() => toggle(p)}>{p.name}{p.trackIds.includes(track.id) ? ' ✓' : ''}</button>
           ))}

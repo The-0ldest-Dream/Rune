@@ -10,7 +10,9 @@ export default function Visualizer({ height = 120, bars = 40 }) {
     const el = canvas.current;
     const g = el.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
-    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#1ed760';
+    let accent = '#1ed760', frame = 0;
+    const readAccent = () => { accent = getComputedStyle(el).getPropertyValue('--accent').trim() || accent; };
+    readAccent();
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let raf, data;
 
@@ -20,6 +22,7 @@ export default function Visualizer({ height = 120, bars = 40 }) {
     ro.observe(el);
 
     const draw = () => {
+      if (frame++ % 30 === 0) readAccent();
       const { width: w, height: h } = el;
       g.clearRect(0, 0, w, h);
       const an = engine.analyser;

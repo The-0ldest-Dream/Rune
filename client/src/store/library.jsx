@@ -2,8 +2,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { idb, wipeDatabase } from '../idb.js';
 import { readTags } from '../tags.js';
-import { UNKNOWN, albumKeyOf, artistKeyOf, findMatch, fpOf, groupTracks, resizeImage, sigKeyOf } from '../util.js';
+import { LIKED_COVER, LIKED_ID, UNKNOWN, albumKeyOf, artistKeyOf, findMatch, fpOf, groupTracks, resizeImage, sigKeyOf } from '../util.js';
 import { buildExport, parseExport, planImport } from './backup.js';
+import { applyTheme, getTheme, setTheme } from '../themes.js';
 
 const Ctx = createContext(null);
 export const useLibrary = () => useContext(Ctx);
@@ -55,6 +56,8 @@ export function LibraryProvider({ children }) {
   const [editing, setEditing] = useState(null);
   const [statsTick, setStatsTick] = useState(0);
   const [ready, setReady] = useState(false);
+  // Songs the user played from a search (newest first). Shown in the search bar instead of the typed queries.
+  const [searchPlays, setSearchPlays] = useState(() => { try { return JSON.parse(localStorage.getItem('rune.searchPlays')) || []; } catch { return []; } });
 
   const recMap = useRef(new Map());
   const plRef = useRef([]);
@@ -93,6 +96,7 @@ export function LibraryProvider({ children }) {
           id: p.id, name: p.name, updatedAt: p.updatedAt || 0,
           trackIds: p.trackIds || (p.tracks || []).map((t) => t.id).filter((id) => recMap.current.has(id)),
         }));
+        if (!pl.some((p) => p.id === LIKED_ID)) pl.unshift({ id: LIKED_ID, name: 'Liked Songs', trackIds: [], updatedAt: 0 });   // always present
         plRef.current = pl; setRawPlaylists(pl);
         coversRef.current = (await idb.get('kv', 'covers')) || {}; setCoverBlobs(coversRef.current);
         const prof = await idb.get('kv', 'profile');
@@ -134,8 +138,11 @@ export function LibraryProvider({ children }) {
 
   const playlists = useMemo(() => rawPlaylists.map((p) => {
     const list = p.trackIds.map((id) => byId.get(id)).filter(Boolean);
-    return { ...p, tracks: list, cover: coverBlobs[`playlist:${p.id}`] === 'none' ? null : customUrl(`playlist:${p.id}`) || list.find((t) => t.cover)?.cover || null };
-  }), [rawPlaylists, byId, coverBlobs, customUrl]);
+    const system = p.id === LIKED_ID;
+    const fallback = system ? LIKED_COVER : list.find((t) => t.cover)?.cover || null;
+    return { ...p, system, tracks: list, cover: coverBlobs[`playlist:${p.id}`] === 'none' ? null : customUrl(`playlist:${p.id}`) || fallback };
+  }).sort((a, b) => (b.system ? 1 : 0) - (a.system ? 1 : 0)), [rawPlaylists, byId, coverBlobs, customUrl]);
+  const likedSet = useMemo(() => new Set(rawPlaylists.find((p) => p.id === LIKED_ID)?.trackIds || []), [rawPlaylists]);
 
   const videos = useMemo(() => records.filter((r) => r.kind === 'video').map((r) => ({
     id: r.id, title: r.title, duration: r.duration || 0, size: r.size || 0, addedAt: r.addedAt, poster: urlOf(r.poster),
@@ -286,8 +293,9 @@ export function LibraryProvider({ children }) {
     return p;
   }, [persistPlaylists]);
   const patchPlaylist = (id, fn) => persistPlaylists(plRef.current.map((p) => (p.id === id ? { ...fn(p), updatedAt: Date.now() } : p)));
-  const renamePlaylist = (id, name) => patchPlaylist(id, (p) => ({ ...p, name: name.trim() || p.name }));
-  const deletePlaylist = (id) => { dropCover('playlist', id); persistPlaylists(plRef.current.filter((p) => p.id !== id)); };
+  const renamePlaylist = (id, name) => id !== LIKED_ID && patchPlaylist(id, (p) => ({ ...p, name: name.trim() || p.name }));
+  const toggleLike = (trackId) => patchPlaylist(LIKED_ID, (p) => ({ ...p, trackIds: p.trackIds.includes(trackId) ? p.trackIds.filter((x) => x !== trackId) : [...p.trackIds, trackId] }));
+  const deletePlaylist = (id) => { if (id === LIKED_ID) return; dropCover('playlist', id); persistPlaylists(plRef.current.filter((p) => p.id !== id)); };
   const addToPlaylist = (id, trackId) => patchPlaylist(id, (p) => (p.trackIds.includes(trackId) ? p : { ...p, trackIds: [...p.trackIds, trackId] }));
   const removeTrackFromPlaylist = (id, trackId) => patchPlaylist(id, (p) => ({ ...p, trackIds: p.trackIds.filter((x) => x !== trackId) }));
   const removeFromPlaylist = (id, index) => patchPlaylist(id, (p) => ({ ...p, trackIds: p.trackIds.filter((_, i) => i !== index) }));
@@ -334,7 +342,7 @@ export function LibraryProvider({ children }) {
   // ---- backup: export / import everything except the audio files ----
   const exportData = useCallback(async () => {
     const file = await buildExport({
-      records: Array.from(recMap.current.values()), covers: coversRef.current, profile, playlists: plRef.current, stats: statsRef.current,
+      records: Array.from(recMap.current.values()), covers: coversRef.current, profile, playlists: plRef.current, stats: statsRef.current, theme: getTheme(),
     });
     const url = URL.createObjectURL(file);
     const a = document.createElement('a');
@@ -354,7 +362,11 @@ export function LibraryProvider({ children }) {
     persistCovers(covers);
     // playlists: same id → keep the newer one
     const merged = new Map(plRef.current.map((p) => [p.id, p]));
-    for (const p of plan.playlists) { const cur = merged.get(p.id); if (!cur || (p.updatedAt || 0) >= (cur.updatedAt || 0)) merged.set(p.id, p); }
+    for (const p of plan.playlists) {
+      const cur = merged.get(p.id);
+      if (p.id === LIKED_ID && cur) merged.set(p.id, { ...cur, trackIds: [...new Set([...cur.trackIds, ...p.trackIds])], updatedAt: Date.now() }); // likes from both devices
+      else if (!cur || (p.updatedAt || 0) >= (cur.updatedAt || 0)) merged.set(p.id, p);
+    }
     persistPlaylists(Array.from(merged.values()));
     // stats: never lose listening time — keep the larger value
     for (const [id, s] of Object.entries(plan.stats)) {
@@ -362,12 +374,22 @@ export function LibraryProvider({ children }) {
       cur.seconds = Math.max(cur.seconds, s.seconds || 0); cur.plays = Math.max(cur.plays, s.plays || 0);
     }
     dirty.current = true; flushStats();
+    // theme
+    if (plan.theme?.id) setTheme({ id: plan.theme.id, custom: plan.theme.custom || getTheme().custom });
     // profile
     const pr = plan.profile;
     if (pr.avatar) release(profile.avatar);
     persistProfile({ name: pr.name || profile.name, username: pr.username || profile.username, avatar: pr.avatar || profile.avatar });
     return plan.summary;
   }, [profile, release, persistPlaylists, persistProfile, flushStats]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveSearchPlays = (next) => {
+    setSearchPlays(next);
+    try { localStorage.setItem('rune.searchPlays', JSON.stringify(next)); } catch { /* storage blocked */ }
+  };
+  const recordSearchPlay = (id) => saveSearchPlays([id, ...searchPlays.filter((x) => x !== id)].slice(0, 10));
+  const forgetSearchPlay = (id) => saveSearchPlays(searchPlays.filter((x) => x !== id));
+  const clearSearchPlays = () => saveSearchPlays([]);
 
   // ---- delete everything Rune stores on this device ----
   const deleteEverything = useCallback(async () => {
@@ -394,14 +416,14 @@ export function LibraryProvider({ children }) {
   const videoBlob = useCallback((id) => recMap.current.get(id)?.blob || null, []);
 
   const value = useMemo(() => ({
-    ready, tracks, byId, videos, videoTracks, videoById, playlists, artists: groups.artists, albums: groups.albums, artistByKey: groups.artistByKey, albumByKey: groups.albumByKey,
+    ready, tracks, byId, videos, videoTracks, videoById, playlists, likedSet, searchPlays, recordSearchPlay, forgetSearchPlay, clearSearchPlays, artists: groups.artists, albums: groups.albums, artistByKey: groups.artistByKey, albumByKey: groups.albumByKey,
     profile, avatarUrl, stats, notice, setNotice, toast, editing,
     openEdit: (ids, init = {}) => setEditing({ ids, init }), closeEdit: () => setEditing(null),
     addFiles, addVideos, removeFile: removeRecord, removeVideo: removeRecord, renameVideo, updateTracks, resolveSrc, videoBlob,
     setCoverBlob, removeCover, artBlob, setAvatar, exportData, importData,
-    createPlaylist, renamePlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, removeTrackFromPlaylist,
+    createPlaylist, renamePlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, removeTrackFromPlaylist, toggleLike, isLiked: (id) => likedSet.has(id),
     saveProfile, beginListen, recordListen, resetStats, deleteEverything,
-  }), [ready, tracks, byId, videos, playlists, groups, profile, avatarUrl, stats, notice, editing, coverBlobs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [ready, tracks, byId, videos, playlists, groups, profile, avatarUrl, stats, notice, editing, coverBlobs, searchPlays]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -1,6 +1,6 @@
 // Rune for Windows: a thin Electron shell around the built web app (../client/dist copied into ./app).
 // The app is served from a private "app://" scheme so IndexedDB, Web Audio and fullscreen behave like on a real website.
-const { app, BrowserWindow, Menu, protocol, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, nativeImage, protocol, shell } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
@@ -20,15 +20,31 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('enable-features', 'HardwareMediaKeyHandling,MediaSessionService');
 
 let win = null;
+let playerState = { playing: false, hasTrack: false };
+
+// Windows taskbar thumbnail buttons: previous / play-pause / next (like other music players).
+function updateThumbar() {
+  if (process.platform !== 'win32' || !win || win.isDestroyed()) return;
+  const img = (name) => nativeImage.createFromPath(path.join(__dirname, 'build', 'thumb', `${name}.png`));
+  const flags = playerState.hasTrack ? [] : ['disabled'];
+  const send = (cmd) => () => win && !win.isDestroyed() && win.webContents.send('transport', cmd);
+  win.setThumbarButtons([
+    { tooltip: 'Previous', icon: img('prev'), flags, click: send('prev') },
+    { tooltip: playerState.playing ? 'Pause' : 'Play', icon: img(playerState.playing ? 'pause' : 'play'), flags, click: send('toggle') },
+    { tooltip: 'Next', icon: img('next'), flags, click: send('next') },
+  ]);
+}
+ipcMain.on('player-state', (_event, state) => { playerState = state; updateThumbar(); });
 
 function createWindow() {
   win = new BrowserWindow({
     width: 1180, height: 760, minWidth: 360, minHeight: 520,
     backgroundColor: '#000000', title: 'Rune', icon: path.join(__dirname, 'build', 'icon.png'),
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, spellcheck: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, spellcheck: false },
   });
   win.loadURL('app://rune/index.html');
+  win.webContents.on('did-finish-load', updateThumbar);
   const external = (url) => { if (/^https?:/.test(url)) shell.openExternal(url); };
   win.webContents.setWindowOpenHandler(({ url }) => { external(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('app://')) { e.preventDefault(); external(url); } });

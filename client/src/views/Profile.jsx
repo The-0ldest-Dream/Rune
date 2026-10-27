@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLibrary } from '../store/library.jsx';
 import { usePlayer } from '../store/player.jsx';
 import { fmtListened } from '../util.js';
+import { DEFAULT_CUSTOM, THEMES, buildVars, getTheme, setTheme, subscribeTheme } from '../themes.js';
 import { CoverEditor } from '../components/CoverEditor.jsx';
 import { Icon, IconButton, Status } from '../components/ui.jsx';
 
@@ -36,6 +37,32 @@ function useAppDownloads() {
     return () => { live = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return { ...state, host };
+}
+
+function ThemePicker() {
+  const [theme, setT] = useState(getTheme);
+  useEffect(() => subscribeTheme(setT), []);
+  const custom = theme.custom || DEFAULT_CUSTOM;
+  const swatch = (spec) => { const v = buildVars(spec); return [v['--bg'], v['--panel'], v['--elev'], v['--accent']]; };
+  const setCustom = (key, value) => setTheme({ id: 'custom', custom: { ...custom, [key]: value } });
+  return (
+    <>
+      <div className="theme-grid" role="group" aria-label="Themes">
+        {[...THEMES, { id: 'custom', name: 'Custom', spec: custom }].map((t) => (
+          <button key={t.id} className="theme-card" aria-pressed={theme.id === t.id} onClick={() => setTheme({ id: t.id, custom })}>
+            <span className="theme-swatch">{swatch(t.spec).map((c, i) => <i key={i} style={{ background: c }} />)}</span>
+            {t.name}
+          </button>
+        ))}
+      </div>
+      <div className="theme-custom">
+        <strong>Make your own</strong>
+        <label>Background <input type="color" value={custom.bg} onChange={(e) => setCustom('bg', e.target.value)} /></label>
+        <label>Panels <input type="color" value={custom.panel} onChange={(e) => setCustom('panel', e.target.value)} /></label>
+        <label>Accent <input type="color" value={custom.accent} onChange={(e) => setCustom('accent', e.target.value)} /></label>
+      </div>
+    </>
+  );
 }
 
 function DeleteDialog({ onClose }) {
@@ -154,6 +181,12 @@ export default function ProfilePage() {
           </ol>
         )}
         {total > 0 && <button className="link-btn" onClick={() => { if (confirm('Reset all listening stats?')) lib.resetStats(); }}>Reset stats</button>}
+      </section>
+
+      <section className="stats backup" aria-labelledby="theme-title">
+        <h2 id="theme-title">Appearance</h2>
+        <p className="muted">Pick a theme, or choose “Custom” and set your own colours. Text colours adjust automatically.</p>
+        <ThemePicker />
       </section>
 
       {apps.host && (

@@ -22,7 +22,7 @@ async function gunzip(buf) {
  * @param {{records:any[], covers:Record<string,Blob|'none'>, profile:any, playlists:any[], stats:any}} src
  * @returns {Promise<Blob>} compressed backup file
  */
-export async function buildExport({ records, covers, profile, playlists, stats }, shrink = shrinkImage) {
+export async function buildExport({ records, covers, profile, playlists, stats, theme = null }, shrink = shrinkImage) {
   const images = [], seen = new Map();
   const addImage = async (blob, max) => {
     if (!blob || blob === 'none') return null;
@@ -54,7 +54,7 @@ export async function buildExport({ records, covers, profile, playlists, stats }
   const data = {
     app: MAGIC, version: 1, exportedAt: new Date().toISOString(),
     profile: { name: profile.name || '', username: profile.username || '', avatar: await addImage(profile.avatar, 512) },
-    images, songs, covers: outCovers, stats: outStats,
+    theme, images, songs, covers: outCovers, stats: outStats,
     playlists: playlists.map((p) => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, songs: p.trackIds.map((id) => idToFp.get(id)).filter(Boolean) })),
   };
   return gzip(JSON.stringify(data));
@@ -109,6 +109,7 @@ export async function planImport(data, records, { uid, now = Date.now() }) {
 
   return {
     updated, created, covers, playlists, stats,
+    theme: data.theme || null,
     profile: { name: data.profile?.name || '', username: data.profile?.username || '', avatar: img(data.profile?.avatar) },
     summary: { matched, missing: created.length, playlists: playlists.length },
   };

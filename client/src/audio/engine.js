@@ -1,5 +1,6 @@
-// Web Audio graph: <audio> → tone (bass/mid/treble) → 10-band graphic EQ → preamp → limiter → analyser → speakers.
-export const EQ_FREQS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+// Web Audio graph: media element → tone (bass/mid/treble) → 10-band graphic EQ → headroom/preamp gain → analyser → speakers.
+import { BAND_Q, EQ_FREQS, TONE, bandType, peakBoostDb } from './eqMath.js';
+export { EQ_FREQS } from './eqMath.js';
 export const EQ_LABELS = ['31', '62', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
 
 export const PRESETS = {
@@ -14,10 +15,14 @@ export const PRESETS = {
 };
 
 const STORAGE_KEY = 'rune.eq';
-const DEFAULTS = { enabled: true, preset: 'Flat', preamp: 0, bass: 0, mid: 0, treble: 0, bands: PRESETS.Flat.slice() };
+const DEFAULTS = { enabled: true, autoGain: true, preset: 'Flat', preamp: 0, bass: 0, mid: 0, treble: 0, bands: PRESETS.Flat.slice() };
 
 function load() {
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(STORAGE_KEY)) }; } catch { return { ...DEFAULTS }; }
+  try {
+    const s = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(STORAGE_KEY)) };
+    if (!Array.isArray(s.bands) || s.bands.length !== 10) s.bands = PRESETS.Flat.slice();
+    return s;
+  } catch { return { ...DEFAULTS, bands: PRESETS.Flat.slice() }; }
 }
 
 export class AudioEngine {
@@ -26,6 +31,8 @@ export class AudioEngine {
     this.ctx = null;
     this.settings = load();
     this.subs = new Set();
+    // Browsers suspend audio contexts in the background / after inactivity: wake it whenever playback starts.
+    el.addEventListener('play', () => { if (this.ctx?.state === 'suspended') this.ctx.resume(); });
   }
 
   /** Must first be called from a user gesture (autoplay policy). Safe to call repeatedly. */
@@ -33,48 +40,41 @@ export class AudioEngine {
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
-      const c = (this.ctx = new AC());
+      const c = (this.ctx = new AC({ latencyHint: 'playback' }));
       this.source = c.createMediaElementSource(this.el);
-      this.bass = this.biquad('lowshelf', 120);
-      this.mid = this.biquad('peaking', 1000, 0.8);
-      this.treble = this.biquad('highshelf', 6000);
-      this.bands = EQ_FREQS.map((f, i) =>
-        this.biquad(i === 0 ? 'lowshelf' : i === EQ_FREQS.length - 1 ? 'highshelf' : 'peaking', f, 1.1)
-      );
+      this.tone = TONE.map((t) => this.biquad(t.type, t.f, t.q));
+      this.bands = EQ_FREQS.map((f, i) => this.biquad(bandType(i), f, BAND_Q));
       this.pre = c.createGain();
-      this.limiter = c.createDynamicsCompressor(); // soft safety limiter so boosts don't clip
-      this.limiter.threshold.value = -3;
-      this.limiter.knee.value = 0;
-      this.limiter.ratio.value = 20;
-      this.limiter.attack.value = 0.003;
-      this.limiter.release.value = 0.25;
       this.analyser = c.createAnalyser();
       this.analyser.fftSize = 512;
       this.analyser.smoothingTimeConstant = 0.82;
-      const chain = [this.source, this.bass, this.mid, this.treble, ...this.bands, this.pre, this.limiter, this.analyser, c.destination];
+      // No compressor here: Web Audio's compressor adds make-up gain and colours the sound even with a flat EQ.
+      // Instead the gain stage below lowers the level by exactly the amount the EQ boosts at its loudest frequency.
+      const chain = [this.source, ...this.tone, ...this.bands, this.pre, this.analyser, c.destination];
       chain.reduce((a, b) => (a.connect(b), b));
       this.apply();
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
   }
 
-  biquad(type, freq, q = 1) {
+  biquad(type, freq, q) {
     const f = this.ctx.createBiquadFilter();
-    f.type = type;
-    f.frequency.value = freq;
-    f.Q.value = q;
+    f.type = type; f.frequency.value = freq; f.Q.value = q;
     return f;
+  }
+
+  /** dB the volume is lowered to leave room for the boosts. */
+  headroom() {
+    return this.settings.autoGain ? peakBoostDb(this.settings, this.ctx?.sampleRate || 48000) : 0;
   }
 
   apply() {
     if (!this.ctx) return;
     const s = this.settings, on = s.enabled, t = this.ctx.currentTime;
-    const set = (param, v) => param.setTargetAtTime(v, t, 0.015);
-    set(this.bass.gain, on ? s.bass : 0);
-    set(this.mid.gain, on ? s.mid : 0);
-    set(this.treble.gain, on ? s.treble : 0);
+    const set = (param, v) => param.setTargetAtTime(v, t, 0.02);
+    TONE.forEach((tn, i) => set(this.tone[i].gain, on ? s[tn.key] : 0));
     this.bands.forEach((b, i) => set(b.gain, on ? s.bands[i] : 0));
-    set(this.pre.gain, on ? 10 ** (s.preamp / 20) : 1);
+    set(this.pre.gain, on ? 10 ** ((s.preamp - this.headroom()) / 20) : 1);
   }
 
   set(partial) {
