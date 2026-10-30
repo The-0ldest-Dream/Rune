@@ -25,7 +25,7 @@ export function ArtistPage({ id }) {
       </header>
       <div className="actions">
         <button className="play-btn big" aria-label={`Play ${a.name}`} onClick={() => playQueue(a.tracks, 0, a.name)}><Icon name="play" size={28} /></button>
-        <button className="btn ghost" onClick={() => lib.openEdit(ids, { artist: a.name })}><Icon name="edit" size={16} /> Rename artist</button>
+        <button className="btn ghost" onClick={() => lib.openEdit(ids, { renameArtist: a.name })}><Icon name="edit" size={16} /> Rename artist</button>
       </div>
       {a.albums.length > 0 && <section><h2>Albums</h2><div className="grid">{a.albums.map((al) => <AlbumCard key={al.key} album={al} />)}</div></section>}
       <section><h2>Songs</h2><TrackList tracks={a.tracks} label={a.name} /></section>

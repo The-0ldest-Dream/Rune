@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLibrary } from '../store/library.jsx';
 import { usePlayer } from '../store/player.jsx';
 import { fmtListened } from '../util.js';
+import { lastDays, perMonth, summarize, yearKeys } from '../recap.js';
 import { DEFAULT_CUSTOM, THEMES, buildVars, getTheme, setTheme, subscribeTheme } from '../themes.js';
 import { CoverEditor } from '../components/CoverEditor.jsx';
 import { Icon, IconButton, Status } from '../components/ui.jsx';
@@ -39,18 +40,85 @@ function useAppDownloads() {
   return { ...state, host };
 }
 
+/** A tiny mock of the app in the theme's own colours, so every theme can be judged before applying it. */
+function ThemePreview({ spec }) {
+  const v = buildVars(spec);
+  const box = (extra) => ({ display: 'block', borderRadius: 4, ...extra });
+  return (
+    <span style={{ display: 'flex', gap: 5, height: 60, padding: 6, borderRadius: 8, background: v['--bg'], border: `1px solid ${v['--line']}`, overflow: 'hidden' }} aria-hidden="true">
+      <span style={box({ width: '26%', background: v['--panel'] })} />
+      <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5, padding: 5, borderRadius: 4, background: v['--panel'] }}>
+        <span style={box({ height: 6, width: '72%', background: v['--text'] })} />
+        <span style={box({ height: 5, width: '46%', background: v['--muted'] })} />
+        <span style={box({ height: 10, width: 30, marginTop: 'auto', borderRadius: 6, background: v['--accent'] })} />
+      </span>
+    </span>
+  );
+}
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const dayLabel = (key) => new Date(`${key}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short' });
+
+/** Weekly / yearly listening recap built from the per-day log (it starts counting from the day this feature was installed). */
+function Recap() {
+  const lib = useLibrary();
+  const [range, setRange] = useState('week');
+  const year = new Date().getFullYear();
+  const d = useMemo(() => {
+    if (range === 'week') {
+      const s = summarize(lib.daily, lastDays(7), lib.byId);
+      return { ...s, unit: 'days', bars: s.perDay.map((x) => ({ label: dayLabel(x.key).slice(0, 3), title: `${dayLabel(x.key)} ${x.key}`, seconds: x.seconds })) };
+    }
+    const s = summarize(lib.daily, yearKeys(lib.daily, year), lib.byId);
+    return { ...s, unit: 'days', bars: perMonth(lib.daily, year).map((sec, i) => ({ label: MONTHS[i][0], title: MONTHS[i], seconds: sec })) };
+  }, [range, lib.daily, lib.byId, year]);
+  const max = Math.max(1, ...d.bars.map((b) => b.seconds));
+  return (
+    <section className="stats" aria-labelledby="recap-title">
+      <div className="stats-head">
+        <h2 id="recap-title">Your recap</h2>
+        <div className="pills" role="group" aria-label="Recap range">
+          <button className={`pill ${range === 'week' ? 'on' : ''}`} onClick={() => setRange('week')}>Last 7 days</button>
+          <button className={`pill ${range === 'year' ? 'on' : ''}`} onClick={() => setRange('year')}>{year}</button>
+        </div>
+      </div>
+      {d.seconds === 0 ? <Status empty emptyText="Play some music and your recap builds up here. It starts counting from now." /> : (
+        <>
+          <div className="recap-cards">
+            <div><strong>{fmtListened(d.seconds)}</strong><span>listened</span></div>
+            <div><strong>{d.plays}</strong><span>{d.plays === 1 ? 'play' : 'plays'}</span></div>
+            <div><strong>{d.activeDays}</strong><span>active {d.activeDays === 1 ? 'day' : 'days'}</span></div>
+            <div><strong>{d.bestDay ? (range === 'week' ? dayLabel(d.bestDay.key) : d.bestDay.key.slice(5)) : '–'}</strong><span>best day · {fmtListened(d.bestDay?.seconds || 0)}</span></div>
+          </div>
+          <div className="recap-bars" role="img" aria-label="Listening time per period">
+            {d.bars.map((b, i) => (
+              <div key={i} className="recap-col" title={`${b.title}: ${fmtListened(b.seconds)}`}>
+                <span className="recap-bar" style={{ height: `${Math.max(b.seconds ? 4 : 1, (b.seconds / max) * 100)}%`, opacity: b.seconds ? 1 : 0.25 }} />
+                <span className="recap-label">{b.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="recap-lists">
+            <div><h3>Top songs</h3><ol>{d.topSongs.map((x) => <li key={x.id}><span>{x.track.title}</span><span className="muted">{fmtListened(x.seconds)}</span></li>)}</ol></div>
+            <div><h3>Top artists</h3><ol>{d.topArtists.length ? d.topArtists.map((x) => <li key={x.name}><span>{x.name}</span><span className="muted">{fmtListened(x.seconds)}</span></li>) : <li className="muted">–</li>}</ol></div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 function ThemePicker() {
   const [theme, setT] = useState(getTheme);
   useEffect(() => subscribeTheme(setT), []);
   const custom = theme.custom || DEFAULT_CUSTOM;
-  const swatch = (spec) => { const v = buildVars(spec); return [v['--bg'], v['--panel'], v['--elev'], v['--accent']]; };
   const setCustom = (key, value) => setTheme({ id: 'custom', custom: { ...custom, [key]: value } });
   return (
     <>
       <div className="theme-grid" role="group" aria-label="Themes">
         {[...THEMES, { id: 'custom', name: 'Custom', spec: custom }].map((t) => (
           <button key={t.id} className="theme-card" aria-pressed={theme.id === t.id} onClick={() => setTheme({ id: t.id, custom })}>
-            <span className="theme-swatch">{swatch(t.spec).map((c, i) => <i key={i} style={{ background: c }} />)}</span>
+            <ThemePreview spec={t.spec} />
             {t.name}
           </button>
         ))}
@@ -181,6 +249,18 @@ export default function ProfilePage() {
           </ol>
         )}
         {total > 0 && <button className="link-btn" onClick={() => { if (confirm('Reset all listening stats?')) lib.resetStats(); }}>Reset stats</button>}
+      </section>
+
+      <Recap />
+
+      <section className="stats backup" aria-labelledby="lyrics-title">
+        <h2 id="lyrics-title">Lyrics</h2>
+        <p className="muted">Rune shows lyrics found inside your song files and in <code>.lrc</code> files next to them. It can also look up the rest online, once per song, in the free LRCLIB database.</p>
+        <label className="switch">
+          <input type="checkbox" checked={lib.lyricsOnline === '1'} onChange={(e) => lib.setLyricsOnline(e.target.checked)} />
+          <span>Find lyrics online automatically</span>
+        </label>
+        <p className="muted small">When on, the title, artist, album and length of a song are sent to lrclib.net when you open its lyrics. Nothing else is shared.</p>
       </section>
 
       <section className="stats backup" aria-labelledby="theme-title">

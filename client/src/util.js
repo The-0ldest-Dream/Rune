@@ -5,21 +5,72 @@ export const MIN_GROUP = 2;
 
 export const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 export const isUnknown = (artist) => !norm(artist) || norm(artist) === norm(UNKNOWN);
-export const artistKeyOf = (t) => (isUnknown(t.artist) ? '' : norm(t.artist));
-export const albumKeyOf = (t) => (artistKeyOf(t) && norm(t.album) ? `${artistKeyOf(t)}|${norm(t.album)}` : '');
+
+// Names that really contain a comma, so "Tyler, The Creator" isn't split into two artists.
+const COMMA_NAMES = [
+  'tyler, the creator', 'earth, wind & fire', 'earth, wind and fire', 'crosby, stills, nash & young', 'crosby, stills, nash and young',
+  'crosby, stills & nash', 'crosby, stills and nash', 'emerson, lake & palmer', 'emerson, lake and palmer', 'peter, paul & mary',
+  'peter, paul and mary', 'blood, sweat & tears', 'blood, sweat and tears', 'earth, wind & fire',
+];
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Splits an artist tag into individual, de-duplicated artists.
+ * "Radiohead, Radiohead" → ["Radiohead"];  "Lana Del Rey, Bleachers, Lana Del Rey" → ["Lana Del Rey", "Bleachers"].
+ * Separators: ";" (explicit — when present it is the only separator), otherwise "," and "feat." / "ft." / "featuring".
+ * "&" and "/" are NOT separators (Simon & Garfunkel, AC/DC).
+ */
+export function parseArtists(raw) {
+  const text = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!text) return [];
+  let parts;
+  if (text.includes(';')) parts = text.split(';');
+  else {
+    const kept = [];
+    let work = text;
+    for (const n of COMMA_NAMES) work = work.replace(new RegExp(escapeRe(n), 'ig'), (m) => { kept.push(m); return `\u0000${kept.length - 1}\u0000`; });
+    parts = work.split(/\s*,\s*|\s+(?:feat\.?|ft\.?|featuring)\s+/i).map((p) => p.replace(/\u0000(\d+)\u0000/g, (_, i) => kept[Number(i)]));
+  }
+  const seen = new Set(), out = [];
+  for (const p of parts) {
+    const name = p.trim(), key = norm(name);
+    if (!name || seen.has(key) || key === norm(UNKNOWN)) continue;
+    seen.add(key); out.push(name);
+  }
+  return out;
+}
+
+/** Everything the app needs to know about who made a song. */
+export function artistInfo(rawArtist, rawAlbumArtist = '') {
+  const artists = parseArtists(rawArtist);
+  const artistKeys = artists.map(norm);
+  // The album belongs to the album-artist tag if it names one of the song's artists, otherwise to the first artist.
+  const aa = parseArtists(rawAlbumArtist).map(norm).find((k) => artistKeys.includes(k));
+  const idx = aa ? artistKeys.indexOf(aa) : 0;
+  return {
+    artists, artistKeys, artist: artists.join(', '),
+    artistKey: artistKeys[0] || '',
+    albumArtistName: artists[idx] || '', albumArtistKey: artistKeys[idx] || '',
+  };
+}
+export const artistKeyOf = (t) => artistInfo(t.artist).artistKey;
+export const albumKeyOf = (t) => {
+  const { albumArtistKey } = artistInfo(t.artist, t.albumArtist);
+  return albumArtistKey && norm(t.album) ? `${albumArtistKey}|${norm(t.album)}` : '';
+};
 
 const byTrackNo = (a, b) => (a.trackNo || 999) - (b.trackNo || 999) || a.title.localeCompare(b.title);
 
-/** Builds artist and album lists from songs. Unknown artists never group together. */
+/** Builds artist and album lists from songs. A song with several artists is listed under each of them. */
 export function groupTracks(tracks) {
   const artistMap = new Map(), albumMap = new Map();
   for (const t of tracks) {
-    if (t.artistKey) {
-      if (!artistMap.has(t.artistKey)) artistMap.set(t.artistKey, { key: t.artistKey, name: t.artist, tracks: [] });
-      artistMap.get(t.artistKey).tracks.push(t);
-    }
+    (t.artistKeys || []).forEach((key, i) => {
+      if (!artistMap.has(key)) artistMap.set(key, { key, name: t.artists[i], tracks: [] });
+      artistMap.get(key).tracks.push(t);
+    });
     if (t.albumKey) {
-      if (!albumMap.has(t.albumKey)) albumMap.set(t.albumKey, { key: t.albumKey, title: t.album, artist: t.artist, artistKey: t.artistKey, tracks: [] });
+      if (!albumMap.has(t.albumKey)) albumMap.set(t.albumKey, { key: t.albumKey, title: t.album, artist: t.albumArtistName, artistKey: t.albumArtistKey, tracks: [] });
       albumMap.get(t.albumKey).tracks.push(t);
     }
   }

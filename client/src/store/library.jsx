@@ -2,7 +2,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { idb, wipeDatabase } from '../idb.js';
 import { readTags } from '../tags.js';
-import { LIKED_COVER, LIKED_ID, UNKNOWN, albumKeyOf, artistKeyOf, findMatch, fpOf, groupTracks, resizeImage, sigKeyOf } from '../util.js';
+import { LIKED_COVER, LIKED_ID, UNKNOWN, albumKeyOf, artistInfo, artistKeyOf, findMatch, parseArtists, fpOf, groupTracks, norm, resizeImage, sigKeyOf } from '../util.js';
+import { fetchOnline } from '../lyrics.js';
+import { matchEntries, parsePlaylist } from '../m3u.js';
+import { dayKey } from '../recap.js';
 import { buildExport, parseExport, planImport } from './backup.js';
 import { applyTheme, getTheme, setTheme } from '../themes.js';
 
@@ -56,6 +59,12 @@ export function LibraryProvider({ children }) {
   const [editing, setEditing] = useState(null);
   const [statsTick, setStatsTick] = useState(0);
   const [ready, setReady] = useState(false);
+  const [lyricsOnline, setLyricsOnlineState] = useState(() => localStorage.getItem('rune.lyricsOnline'));   // '1' | '0' | null (not asked yet)
+  const [lyricsTick, setLyricsTick] = useState(0);
+  const [folders, setFolders] = useState([]);       // linked music folders (File System Access API)
+  const foldersRef = useRef([]);
+  const dailyRef = useRef({});                      // per-day listening log for the recap
+  const tracksRef = useRef([]);
   // Songs the user played from a search (newest first). Shown in the search bar instead of the typed queries.
   const [searchPlays, setSearchPlays] = useState(() => { try { return JSON.parse(localStorage.getItem('rune.searchPlays')) || []; } catch { return []; } });
 
@@ -102,6 +111,7 @@ export function LibraryProvider({ children }) {
         const prof = await idb.get('kv', 'profile');
         if (prof) setProfileState({ name: prof.name || '', username: prof.username || '', avatar: prof.avatar || null });
         statsRef.current = (await idb.get('kv', 'stats')) || {};
+        dailyRef.current = (await idb.get('kv', 'daily')) || {};
         setStatsTick((n) => n + 1);
       } catch {
         toast('Storage is unavailable in this browser mode (private window?). Nothing will be saved.', 'error');
@@ -114,13 +124,19 @@ export function LibraryProvider({ children }) {
   const customUrl = useCallback((key) => { const v = coverBlobs[key]; return v && v !== 'none' ? urlOf(v) : null; }, [coverBlobs, urlOf]);
 
   const tracks = useMemo(() => records.filter((r) => r.kind === 'local' || r.kind === 'ghost').map((r) => {
-    const t = { id: r.id, kind: r.kind, missing: r.kind === 'ghost', title: r.title, artist: r.artist || UNKNOWN, album: r.album || '', trackNo: r.trackNo || 0, duration: r.duration || 0, addedAt: r.addedAt };
-    t.artistKey = artistKeyOf(t); t.albumKey = albumKeyOf(t);
+    const info = artistInfo(r.artist, r.albumArtist);      // "Radiohead, Radiohead" → one artist; duets → several
+    const t = {
+      id: r.id, kind: r.kind, missing: r.kind === 'ghost', title: r.title, artist: info.artist || UNKNOWN, artists: info.artists, artistKeys: info.artistKeys,
+      artistKey: info.artistKey, albumArtistName: info.albumArtistName, albumArtistKey: info.albumArtistKey,
+      album: r.album || '', trackNo: r.trackNo || 0, duration: r.duration || 0, addedAt: r.addedAt, fileName: r.fileName || '',
+    };
+    t.albumKey = info.albumArtistKey && norm(t.album) ? `${info.albumArtistKey}|${norm(t.album)}` : '';
     t.art = urlOf(r.art);
     t.cover = coverBlobs[`song:${t.id}`] === 'none' ? null : customUrl(`song:${t.id}`) || (t.albumKey && customUrl(`album:${t.albumKey}`)) || t.art || null;
     return t;
-  }).sort((a, b) => a.addedAt - b.addedAt), [records, coverBlobs, urlOf, customUrl]);
+  }).sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }) || a.artist.localeCompare(b.artist, undefined, { sensitivity: 'base' })), [records, coverBlobs, urlOf, customUrl]);   // always A → Z by name
 
+  tracksRef.current = tracks;
   const byId = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks]);
 
   const groups = useMemo(() => {
@@ -158,19 +174,59 @@ export function LibraryProvider({ children }) {
   const avatarUrl = useMemo(() => urlOf(profile.avatar), [profile.avatar, urlOf]);
 
   // ---- adding / removing files ----
-  const putRecord = useCallback(async (rec) => {
+  const refresh = useCallback(() => setRecords(Array.from(recMap.current.values())), []);
+  const putRecord = useCallback(async (rec, flush = true) => {
     await idb.put('files', rec);
     recMap.current.set(rec.id, rec);
-    setRecords(Array.from(recMap.current.values()));
-  }, []);
+    if (flush) refresh();
+  }, [refresh]);
 
-  const addFiles = useCallback(async (list) => {
-    const audio = Array.from(list).filter((f) => f.type.startsWith('audio/') || AUDIO_RE.test(f.name));
-    if (!audio.length) { toast('No audio files found in that selection.', 'error'); return; }
+  // ---- lyrics: stored per song in their own table (embedded tags, .lrc files, or the optional online lookup) ----
+  const saveLyrics = useCallback(async (id, rec) => {
+    await idb.put('lyrics', { id, ...rec, at: Date.now() });
+    setLyricsTick((n) => n + 1);
+  }, []);
+  const getLyrics = useCallback((id) => idb.get('lyrics', id).catch(() => null), []);
+  const setLyricsOnline = useCallback((on) => {
+    const v = on ? '1' : '0';
+    setLyricsOnlineState(v);
+    try { localStorage.setItem('rune.lyricsOnline', v); } catch { /* storage blocked */ }
+  }, []);
+  const findLyricsOnline = useCallback(async (track) => {
+    const raw = await fetchOnline(track);                     // throws when offline / the service is down → nothing is cached
+    const rec = raw ? { source: 'online', raw } : { source: 'online', miss: true };
+    await saveLyrics(track.id, rec);
+    return { id: track.id, ...rec };
+  }, [saveLyrics]);
+
+  /** Matches .lrc files to songs by file name (or "Artist - Title") and stores them as synced lyrics. */
+  const attachLrc = useCallback(async (files, force = true) => {
+    let n = 0;
+    const recs = Array.from(recMap.current.values()).filter((r) => r.kind === 'local' || r.kind === 'ghost');
+    for (const f of files) {
+      const key = norm(stripExt(f.name));
+      const rec = recs.find((r) => r.fileName && norm(stripExt(r.fileName)) === key)
+        || recs.find((r) => norm(`${r.artist} - ${r.title}`) === key || norm(r.title) === key);
+      if (!rec) continue;
+      try {
+        if (!force) { const cur = await idb.get('lyrics', rec.id); if (cur?.source === 'lrc') continue; }
+        const raw = (await f.text()).replace(/^\uFEFF/, '');
+        if (raw.trim()) { await saveLyrics(rec.id, { source: 'lrc', raw }); n++; }
+      } catch { /* unreadable file */ }
+    }
+    return n;
+  }, [saveLyrics]);
+
+  const addFiles = useCallback(async (list, { quiet = false, force = true } = {}) => {
+    const all = Array.from(list);
+    const audio = all.filter((f) => f.type.startsWith('audio/') || AUDIO_RE.test(f.name));
+    const lrc = all.filter((f) => /\.lrc$/i.test(f.name));
+    if (!audio.length && !lrc.length) { if (!quiet) toast('No audio files found in that selection.', 'error'); return 0; }
     let added = 0, skipped = 0, claimed = 0;
+    const have = new Set(Array.from(recMap.current.values()).filter((r) => r.kind === 'local').map((r) => r.fp));
     for (const f of audio) {
       const fp = fpOf(f.name, f.size);
-      if (Array.from(recMap.current.values()).some((r) => r.kind === 'local' && r.fp === fp)) { skipped++; continue; }
+      if (have.has(fp)) { skipped++; continue; }
       try {
         const tags = await readTags(f);
         const guess = parseName(f.name);
@@ -178,22 +234,100 @@ export function LibraryProvider({ children }) {
         const title = tags.title || guess.title || stripExt(f.name);
         const artist = tags.artist || guess.artist || UNKNOWN;
         const sigKey = sigKeyOf(title, artist);
+        const lyr = tags.lyrics ? { source: 'file', raw: tags.lyrics } : null;
         // A faded placeholder from an imported backup? Fill it in so its info, cover, playlists and stats carry over.
         const ghost = findMatch(Array.from(recMap.current.values()).filter((r) => r.kind === 'ghost'), { fp, sigKey, duration });
         if (ghost) {
-          await putRecord({ ...ghost, kind: 'local', blob: f, fileName: f.name, size: f.size, fp, duration: duration || ghost.duration, art: tags.art || ghost.art });
-          claimed++; added++;
-          continue;
+          await putRecord({ ...ghost, kind: 'local', blob: f, fileName: f.name, size: f.size, fp, duration: duration || ghost.duration, art: tags.art || ghost.art }, false);
+          if (lyr) await saveLyrics(ghost.id, lyr);
+          claimed++;
+        } else {
+          const id = `l:${uid()}`;
+          await putRecord({
+            id, kind: 'local', title, artist, albumArtist: tags.albumArtist || '', album: tags.album || '', trackNo: tags.trackNo || 0,
+            duration, art: tags.art, fileName: f.name, size: f.size, fp, sigKey, addedAt: Date.now() + added, blob: f,
+          }, false);
+          if (lyr) await saveLyrics(id, lyr);
         }
-        await putRecord({
-          id: `l:${uid()}`, kind: 'local', title, artist, album: tags.album || '', trackNo: tags.trackNo || 0,
-          duration, art: tags.art, fileName: f.name, size: f.size, fp, sigKey, addedAt: Date.now() + added, blob: f,
-        });
+        have.add(fp);
         added++;
+        if (added % 15 === 0) refresh();
       } catch { toast(`Could not save “${f.name}”. Storage may be full.`, 'error'); }
     }
-    if (added || skipped) toast(`${added ? `Added ${added} ${added === 1 ? 'song' : 'songs'}${claimed ? ` (${claimed} restored from your backup)` : ''}.` : ''}${skipped ? ` ${skipped} already in your library.` : ''}`.trim());
-  }, [putRecord, toast]);
+    refresh();
+    const lyrics = lrc.length ? await attachLrc(lrc, force) : 0;
+    if (!quiet && (added || skipped || lyrics)) {
+      toast([
+        added ? `Added ${added} ${added === 1 ? 'song' : 'songs'}${claimed ? ` (${claimed} restored from your backup)` : ''}.` : '',
+        skipped ? `${skipped} already in your library.` : '',
+        lyrics ? `Lyrics added for ${lyrics} ${lyrics === 1 ? 'song' : 'songs'}.` : '',
+      ].filter(Boolean).join(' '));
+    }
+    return added;
+  }, [putRecord, refresh, saveLyrics, attachLrc, toast]);
+
+  // ---- linked music folders: new files in them are added automatically (Chrome / Edge on desktop) ----
+  const supportsFolders = typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function';
+  const setFolderState = (id, patch) => { foldersRef.current = foldersRef.current.map((f) => (f.id === id ? { ...f, ...patch } : f)); setFolders(foldersRef.current); };
+  const persistFolders = () => idb.put('kv', foldersRef.current.map(({ id, name, handle }) => ({ id, name, handle })), 'folders').catch(() => {});
+
+  const scanFolder = useCallback(async (entry, { ask = false } = {}) => {
+    try {
+      let perm = await entry.handle.queryPermission({ mode: 'read' });
+      if (perm !== 'granted' && ask) perm = await entry.handle.requestPermission({ mode: 'read' });
+      if (perm !== 'granted') { setFolderState(entry.id, { status: 'needs-permission' }); return 0; }
+      setFolderState(entry.id, { status: 'scanning' });
+      const have = new Set(Array.from(recMap.current.values()).filter((r) => r.kind === 'local').map((r) => r.fp));
+      const fresh = [], lrcs = [];
+      const walk = async function* (dir, depth) {
+        for await (const [name, h] of dir.entries()) {
+          if (name.startsWith('.')) continue;
+          if (h.kind === 'file') { if (AUDIO_RE.test(name) || /\.lrc$/i.test(name)) yield h; }
+          else if (depth < 8) yield* walk(h, depth + 1);
+        }
+      };
+      for await (const h of walk(entry.handle, 0)) {
+        const file = await h.getFile();
+        if (/\.lrc$/i.test(file.name)) lrcs.push(file);
+        else if (!have.has(fpOf(file.name, file.size))) fresh.push(file);
+      }
+      const added = await addFiles([...fresh, ...lrcs], { quiet: true, force: false });
+      setFolderState(entry.id, { status: 'ok', added, last: Date.now() });
+      return added;
+    } catch {
+      setFolderState(entry.id, { status: 'error' });
+      return 0;
+    }
+  }, [addFiles]);
+
+  const linkFolder = useCallback(async () => {
+    try {
+      const handle = await window.showDirectoryPicker({ id: 'rune-music', mode: 'read' });
+      for (const f of foldersRef.current) if (await f.handle.isSameEntry(handle)) { toast('That folder is already linked.'); return; }
+      const entry = { id: uid(), name: handle.name, handle, status: 'ok', added: 0 };
+      foldersRef.current = [...foldersRef.current, entry]; setFolders(foldersRef.current); persistFolders();
+      toast(`Linked “${handle.name}”. Scanning…`);
+      const n = await scanFolder(entry);
+      toast(`“${handle.name}”: added ${n} ${n === 1 ? 'song' : 'songs'}. New files are picked up automatically.`);
+    } catch (e) { if (e?.name !== 'AbortError') toast('Could not open that folder.', 'error'); }
+  }, [scanFolder, toast]);
+  const allowFolder = useCallback((id) => { const e = foldersRef.current.find((f) => f.id === id); if (e) scanFolder(e, { ask: true }); }, [scanFolder]);
+  const rescanFolders = useCallback(async () => { for (const e of foldersRef.current) await scanFolder(e); }, [scanFolder]);
+  const unlinkFolder = useCallback((id) => { foldersRef.current = foldersRef.current.filter((f) => f.id !== id); setFolders(foldersRef.current); persistFolders(); }, []);
+
+  useEffect(() => {
+    if (!ready || !supportsFolders) return undefined;
+    let alive = true, last = Date.now();
+    (async () => {
+      const saved = (await idb.get('kv', 'folders').catch(() => null)) || [];
+      if (!alive) return;
+      foldersRef.current = saved.map((f) => ({ ...f, status: 'idle' })); setFolders(foldersRef.current);
+      await rescanFolders();
+    })();
+    const onFocus = () => { if (Date.now() - last > 60000) { last = Date.now(); rescanFolders(); } };
+    window.addEventListener('focus', onFocus);
+    return () => { alive = false; window.removeEventListener('focus', onFocus); };
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addVideos = useCallback(async (list) => {
     const vids = Array.from(list).filter((f) => f.type.startsWith('video/') || VIDEO_RE.test(f.name));
@@ -221,6 +355,7 @@ export function LibraryProvider({ children }) {
   const removeRecord = useCallback(async (id) => {
     const rec = recMap.current.get(id);
     await idb.del('files', id);
+    idb.del('lyrics', id).catch(() => {});
     recMap.current.delete(id);
     if (rec) { release(rec.art); release(rec.poster); }
     setRecords(Array.from(recMap.current.values()));
@@ -237,26 +372,35 @@ export function LibraryProvider({ children }) {
   const updateTracks = useCallback(async (ids, patch) => {
     const clean = {};
     for (const k of ['title', 'artist', 'album', 'trackNo']) if (patch[k] !== undefined) clean[k] = typeof patch[k] === 'string' ? patch[k].trim() : patch[k];
-    if (clean.artist === '') clean.artist = UNKNOWN;
     if (clean.title === '') delete clean.title;
     const before = ids.map((id) => recMap.current.get(id)).filter(Boolean);
     const moves = [];
     for (const b of before) {
       const a = { ...b, ...clean };
+      if (patch.renameArtist) {                       // rename one artist inside each song's artist list (keeps co-artists)
+        const { from, to } = patch.renameArtist;
+        const list = parseArtists(a.artist), at = list.findIndex((n) => norm(n) === norm(from));
+        if (at >= 0) list.splice(at, 1, ...parseArtists(to));
+        const seen = new Set();
+        a.artist = list.filter((n) => { const k = norm(n); if (seen.has(k)) return false; seen.add(k); return true; }).join('; ');
+      }
+      if (!a.artist || !a.artist.trim()) a.artist = UNKNOWN;
       await idb.put('files', a);
       recMap.current.set(a.id, a);
-      const bt = { artist: b.artist, album: b.album }, at = { artist: a.artist, album: a.album };
-      if (albumKeyOf(bt) !== albumKeyOf(at)) moves.push(['album', albumKeyOf(bt), albumKeyOf(at)]);
-      if (artistKeyOf(bt) !== artistKeyOf(at)) moves.push(['artist', artistKeyOf(bt), artistKeyOf(at)]);
+      const ba = albumKeyOf(b), aa = albumKeyOf(a);
+      if (ba !== aa) moves.push(['album', ba, aa]);
+      const bk = artistInfo(b.artist).artistKeys, ak = artistInfo(a.artist).artistKeys;
+      const gone = bk.filter((k) => !ak.includes(k)), added = ak.filter((k) => !bk.includes(k));
+      if (gone.length === 1 && added.length === 1) moves.push(['artist', gone[0], added[0]]);
     }
     setRecords(Array.from(recMap.current.values()));
     // carry custom artist/album covers over to the new name when nothing else uses the old one
-    const still = Array.from(recMap.current.values()).filter((r) => r.kind === 'local');
+    const still = Array.from(recMap.current.values()).filter((r) => r.kind === 'local' || r.kind === 'ghost');
     const next = { ...coversRef.current };
     let changed = false;
     for (const [kind, from, to] of moves) {
       if (!from || !next[`${kind}:${from}`]) continue;
-      const used = still.some((r) => (kind === 'album' ? albumKeyOf(r) : artistKeyOf(r)) === from);
+      const used = still.some((r) => (kind === 'album' ? albumKeyOf(r) === from : artistInfo(r.artist).artistKeys.includes(from)));
       if (to && !next[`${kind}:${to}`]) next[`${kind}:${to}`] = next[`${kind}:${from}`];
       if (!used) delete next[`${kind}:${from}`];
       changed = true;
@@ -319,14 +463,16 @@ export function LibraryProvider({ children }) {
     if (!id) return;
     if (session.current.id !== id) session.current = { id, secs: 0, counted: false };
     const s = session.current, st = (statsRef.current[id] ||= { seconds: 0, plays: 0 });
-    st.seconds += 1; s.secs += 1;
-    if (!s.counted && s.secs >= Math.min(30, Math.max(5, (duration || 50) * 0.6))) { st.plays += 1; s.counted = true; }
+    const day = (dailyRef.current[dayKey()] ||= { songs: {}, plays: 0 });
+    st.seconds += 1; s.secs += 1; day.songs[id] = (day.songs[id] || 0) + 1;
+    if (!s.counted && s.secs >= Math.min(30, Math.max(5, (duration || 50) * 0.6))) { st.plays += 1; day.plays += 1; s.counted = true; }
     dirty.current = true;
   }, []);
   const flushStats = useCallback(() => {
     if (!dirty.current) return;
     dirty.current = false;
     idb.put('kv', statsRef.current, 'stats').catch(() => {});
+    idb.put('kv', dailyRef.current, 'daily').catch(() => {});
     setStatsTick((n) => n + 1);
   }, []);
   useEffect(() => {
@@ -336,13 +482,14 @@ export function LibraryProvider({ children }) {
     window.addEventListener('pagehide', flushStats);
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', hide); window.removeEventListener('pagehide', flushStats); };
   }, [flushStats]);
-  const resetStats = useCallback(() => { statsRef.current = {}; dirty.current = false; idb.put('kv', {}, 'stats'); setStatsTick((n) => n + 1); }, []);
+  const resetStats = useCallback(() => { statsRef.current = {}; dailyRef.current = {}; dirty.current = false; idb.put('kv', {}, 'stats'); idb.put('kv', {}, 'daily'); setStatsTick((n) => n + 1); }, []);
   const stats = useMemo(() => ({ ...statsRef.current }), [statsTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const daily = useMemo(() => ({ ...dailyRef.current }), [statsTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- backup: export / import everything except the audio files ----
   const exportData = useCallback(async () => {
     const file = await buildExport({
-      records: Array.from(recMap.current.values()), covers: coversRef.current, profile, playlists: plRef.current, stats: statsRef.current, theme: getTheme(),
+      records: Array.from(recMap.current.values()), covers: coversRef.current, profile, playlists: plRef.current, stats: statsRef.current, daily: dailyRef.current, theme: getTheme(),
     });
     const url = URL.createObjectURL(file);
     const a = document.createElement('a');
@@ -373,6 +520,11 @@ export function LibraryProvider({ children }) {
       const cur = (statsRef.current[id] ||= { seconds: 0, plays: 0 });
       cur.seconds = Math.max(cur.seconds, s.seconds || 0); cur.plays = Math.max(cur.plays, s.plays || 0);
     }
+    for (const [date, day] of Object.entries(plan.daily || {})) {
+      const cur = (dailyRef.current[date] ||= { songs: {}, plays: 0 });
+      for (const [id, sec] of Object.entries(day.songs)) cur.songs[id] = Math.max(cur.songs[id] || 0, sec);
+      cur.plays = Math.max(cur.plays, day.plays || 0);
+    }
     dirty.current = true; flushStats();
     // theme
     if (plan.theme?.id) setTheme({ id: plan.theme.id, custom: plan.theme.custom || getTheme().custom });
@@ -390,6 +542,18 @@ export function LibraryProvider({ children }) {
   const recordSearchPlay = (id) => saveSearchPlays([id, ...searchPlays.filter((x) => x !== id)].slice(0, 10));
   const forgetSearchPlay = (id) => saveSearchPlays(searchPlays.filter((x) => x !== id));
   const clearSearchPlays = () => saveSearchPlays([]);
+
+  /** Imports an .m3u / .m3u8 / .pls file as a new playlist (songs are matched to your library). */
+  const importPlaylistFile = useCallback(async (file) => {
+    const entries = parsePlaylist(await file.text());
+    if (!entries.length) throw new Error('That playlist file is empty or not recognised.');
+    const { ids, matched, missing } = matchEntries(entries, tracksRef.current.filter((t) => !t.missing));
+    let name = stripExt(file.name).trim() || 'Imported playlist';
+    const taken = new Set(plRef.current.map((p) => p.name.toLowerCase()));
+    for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${stripExt(file.name).trim()} (${n})`;
+    const playlist = createPlaylist(name, ids);
+    return { playlist, matched, missing, total: entries.length };
+  }, [createPlaylist]);
 
   // ---- delete everything Rune stores on this device ----
   const deleteEverything = useCallback(async () => {
@@ -423,7 +587,9 @@ export function LibraryProvider({ children }) {
     setCoverBlob, removeCover, artBlob, setAvatar, exportData, importData,
     createPlaylist, renamePlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, removeTrackFromPlaylist, toggleLike, isLiked: (id) => likedSet.has(id),
     saveProfile, beginListen, recordListen, resetStats, deleteEverything,
-  }), [ready, tracks, byId, videos, playlists, groups, profile, avatarUrl, stats, notice, editing, coverBlobs, searchPlays]); // eslint-disable-line react-hooks/exhaustive-deps
+    daily, getLyrics, saveLyrics, findLyricsOnline, lyricsOnline, setLyricsOnline, lyricsTick,
+    supportsFolders, folders, linkFolder, allowFolder, rescanFolders, unlinkFolder, importPlaylistFile,
+  }), [ready, tracks, byId, videos, playlists, groups, profile, avatarUrl, stats, notice, editing, coverBlobs, searchPlays, stats, daily, lyricsOnline, lyricsTick, folders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -5,7 +5,7 @@ import PlayerBar from './components/PlayerBar.jsx';
 import SearchBox from './components/SearchBox.jsx';
 import EditDialog from './components/EditDialog.jsx';
 import FullScreen from './components/FullScreen.jsx';
-import { Equalizer, NowPlaying, Queue } from './components/Panels.jsx';
+import { Equalizer, LyricsPanel, NowPlaying, PlaybackPanel, Queue } from './components/Panels.jsx';
 import { Avatar, Cover, Icon, IconButton } from './components/ui.jsx';
 import { DEFAULT_BACKDROP, backdropFor, backdropFromHue, dominantColor, hueFor } from './util.js';
 import Home from './views/Home.jsx';
@@ -254,7 +254,7 @@ function Shell() {
   };
   const resetPane = (which) => () => { commit({ ...layout, [which]: DEF[which] }); setVar(`--${which === 'side' ? 'side' : 'panel'}-w`, DEF[which]); if (which === 'side') setCompact(false); };
 
-  const titles = { now: 'Now playing', queue: 'Queue', eq: 'Equalizer' };
+  const titles = { now: 'Now playing', queue: 'Queue', eq: 'Equalizer', play: 'Playback', lyrics: 'Lyrics' };
   const tint = panel.open && panel.tab === 'now' && current;
   return (
     <div ref={appRef}
@@ -278,6 +278,8 @@ function Shell() {
             {panel.tab === 'now' && <NowPlaying />}
             {panel.tab === 'queue' && <Queue />}
             {panel.tab === 'eq' && <Equalizer />}
+            {panel.tab === 'play' && <PlaybackPanel />}
+            {panel.tab === 'lyrics' && <LyricsPanel />}
           </div>
         </aside>
       )}

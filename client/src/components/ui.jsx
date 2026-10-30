@@ -32,6 +32,9 @@ const PATHS = {
   panel: 'M3 4h18v16H3V4zm12 2v12h4V6h-4z',
   expandArrow: 'M21 11V3h-8l3.29 3.29-10 10L3 13v8h8l-3.29-3.29 10-10z',
   collapseArrow: 'M22 3.41L16.71 8.7 20 12h-8V4l3.29 3.29L20.59 2 22 3.41zM3.41 22l5.29-5.29L12 20v-8H4l3.29 3.29L2 20.59 3.41 22z',
+  timer: 'M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0012 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z',
+  mic: 'M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z',
+  folder: 'M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',
   heart: 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
   heartOutline: 'M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z',
   edit: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
@@ -88,6 +91,21 @@ export function Status({ loading, empty, emptyText }) {
 
 export function Eq({ active }) {
   return <span className={`bars ${active ? 'live' : ''}`} aria-hidden="true"><i /><i /><i /></span>;
+}
+
+/** "Lana Del Rey, Bleachers": every artist is its own link (when that artist has a page). */
+export function ArtistLinks({ track, stopClicks = false }) {
+  const lib = useLibrary();
+  const names = track.artists?.length ? track.artists : [track.artist];
+  return names.map((n, i) => {
+    const key = track.artistKeys?.[i];
+    return (
+      <React.Fragment key={i}>
+        {i > 0 && ', '}
+        {key && lib.artistByKey.has(key) ? <a href={artistHref(key)} onClick={stopClicks ? (e) => e.stopPropagation() : undefined}>{n}</a> : n}
+      </React.Fragment>
+    );
+  });
 }
 
 export const albumHref = (key) => `#/album/${encodeURIComponent(key)}`;
@@ -223,8 +241,7 @@ export function TrackList({ tracks, onRemove, removeLabel, showAlbum = true, emp
               <span className="t-text">
                 <span className="t-title">{t.title}</span>
                 <span className="t-artist">
-                  {lib.artistByKey.has(t.artistKey)
-                    ? <a href={artistHref(t.artistKey)} onClick={(e) => e.stopPropagation()}>{t.artist}</a> : t.artist}
+                  <ArtistLinks track={t} stopClicks />
                 </span>
               </span>
             </span>

@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { usePlayer } from '../store/player.jsx';
 import Visualizer from './Visualizer.jsx';
-import { VideoSurface } from './Panels.jsx';
+import { LyricsPanel, VideoSurface } from './Panels.jsx';
 import { Cover, Icon, IconButton } from './ui.jsx';
 
 const IDLE_MS = 5000;
@@ -41,6 +41,7 @@ export default function FullScreen({ onClose, winFull = false, onToggleWindow })
         <h2>{label || 'Now playing'}</h2>
         <div className="fs-actions">
           <IconButton icon="album" label="Show cover" active={view === 'cover'} onClick={() => setView('cover')} />
+          <IconButton icon="mic" label="Show lyrics" active={view === 'lyrics'} onClick={() => setView('lyrics')} />
           <IconButton icon="eq" label="Show visualizer" active={view === 'viz'} onClick={() => setView('viz')} />
           <span className="fs-sep" />
           {onToggleWindow && <IconButton icon={winFull ? 'shrink' : 'expand'} label={winFull ? 'Leave window full screen' : 'Full screen window'} onClick={onToggleWindow} />}
@@ -50,6 +51,8 @@ export default function FullScreen({ onClose, winFull = false, onToggleWindow })
       <div className="fs-body">
         {!current ? (
           <div className="panel-empty"><Icon name="music" size={48} /><p>Nothing is playing.</p></div>
+        ) : view === 'lyrics' ? (
+          <div className="fs-lyrics"><LyricsPanel large /></div>
         ) : view === 'cover' && current.kind === 'video' ? (
           <VideoSurface className="fs-video" />
         ) : view === 'cover' ? (

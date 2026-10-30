@@ -3,10 +3,12 @@ let dbPromise;
 let locked = false; // set while/after wiping so nothing can quietly recreate the data
 function open() {
   dbPromise ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open('rune', 1);
+    const req = indexedDB.open('rune', 2);
     req.onupgradeneeded = () => {
-      req.result.createObjectStore('files', { keyPath: 'id' });
-      req.result.createObjectStore('kv');
+      const db = req.result;
+      if (!db.objectStoreNames.contains('files')) db.createObjectStore('files', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+      if (!db.objectStoreNames.contains('lyrics')) db.createObjectStore('lyrics', { keyPath: 'id' });   // added in v2
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);

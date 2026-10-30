@@ -1,5 +1,6 @@
-// Web Audio graph: media element → tone (bass/mid/treble) → 10-band graphic EQ → headroom/preamp gain → analyser → speakers.
+// Web Audio graph: two media elements (A/B, for gapless + crossfade) → per-element gain → tone (bass/mid/treble) → 10-band graphic EQ → headroom/preamp gain → analyser → speakers.
 import { BAND_Q, EQ_FREQS, TONE, bandType, peakBoostDb } from './eqMath.js';
+import { fadeCurves } from './transition.js';
 export { EQ_FREQS } from './eqMath.js';
 export const EQ_LABELS = ['31', '62', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
 
@@ -26,13 +27,13 @@ function load() {
 }
 
 export class AudioEngine {
-  constructor(el) {
-    this.el = el;
+  constructor(elA, elB) {
+    this.els = [elA, elB];
     this.ctx = null;
     this.settings = load();
     this.subs = new Set();
     // Browsers suspend audio contexts in the background / after inactivity: wake it whenever playback starts.
-    el.addEventListener('play', () => { if (this.ctx?.state === 'suspended') this.ctx.resume(); });
+    this.els.forEach((el) => el.addEventListener('play', () => { if (this.ctx?.state === 'suspended') this.ctx.resume(); }));
   }
 
   /** Must first be called from a user gesture (autoplay policy). Safe to call repeatedly. */
@@ -41,7 +42,11 @@ export class AudioEngine {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
       const c = (this.ctx = new AC({ latencyHint: 'playback' }));
-      this.source = c.createMediaElementSource(this.el);
+      // Each element has its own gain so one song can fade out while the next fades in.
+      this.sources = this.els.map((el) => c.createMediaElementSource(el));
+      this.gains = this.sources.map((s) => { const g = c.createGain(); s.connect(g); return g; });
+      this.input = c.createGain();
+      this.gains.forEach((g) => g.connect(this.input));
       this.tone = TONE.map((t) => this.biquad(t.type, t.f, t.q));
       this.bands = EQ_FREQS.map((f, i) => this.biquad(bandType(i), f, BAND_Q));
       this.pre = c.createGain();
@@ -50,11 +55,29 @@ export class AudioEngine {
       this.analyser.smoothingTimeConstant = 0.82;
       // No compressor here: Web Audio's compressor adds make-up gain and colours the sound even with a flat EQ.
       // Instead the gain stage below lowers the level by exactly the amount the EQ boosts at its loudest frequency.
-      const chain = [this.source, ...this.tone, ...this.bands, this.pre, this.analyser, c.destination];
+      const chain = [this.input, ...this.tone, ...this.bands, this.pre, this.analyser, c.destination];
       chain.reduce((a, b) => (a.connect(b), b));
       this.apply();
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
+  }
+
+  /** Makes element `i` the audible one immediately (cancels any fade in progress). */
+  setActive(i) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.gains.forEach((g, k) => { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(k === i ? 1 : 0, t); });
+  }
+
+  /** Fades element `from` out and `to` in over `seconds` (equal-power). */
+  crossfade(from, to, seconds) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, d = Math.max(0.05, seconds), c = fadeCurves(64);
+    const gf = this.gains[from].gain, gt = this.gains[to].gain;
+    gf.cancelScheduledValues(t); gt.cancelScheduledValues(t);
+    gf.setValueAtTime(1, t); gt.setValueAtTime(0, t);
+    gf.setValueCurveAtTime(c.out, t, d);
+    gt.setValueCurveAtTime(c.in, t, d);
   }
 
   biquad(type, freq, q) {

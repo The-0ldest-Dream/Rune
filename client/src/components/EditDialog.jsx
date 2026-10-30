@@ -21,8 +21,8 @@ function Dialog({ ed }) {
   const tracks = ed.ids.map((id) => lib.byId.get(id)).filter(Boolean);
   const single = tracks.length === 1 ? tracks[0] : null;
   const [f, setF] = useState(() => single
-    ? { title: single.title, artist: single.artist === UNKNOWN ? '' : single.artist, album: single.album, trackNo: single.trackNo || '' }
-    : { title: '', artist: ed.init.artist ?? '', album: ed.init.album ?? '' });
+    ? { title: single.title, artist: single.artists.join('; '), album: single.album, trackNo: single.trackNo || '' }
+    : { title: '', artist: ed.init.renameArtist ?? ed.init.artist ?? '', album: ed.init.album ?? '' });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   useEffect(() => {
@@ -35,6 +35,7 @@ function Dialog({ ed }) {
     e.preventDefault();
     const patch = {};
     if (single) Object.assign(patch, { title: f.title, artist: f.artist, album: f.album, trackNo: Number(f.trackNo) || 0 });
+    else if (ed.init.renameArtist) patch.renameArtist = { from: ed.init.renameArtist, to: f.artist };
     else {
       if (f.artist.trim()) patch.artist = f.artist;
       if (f.album.trim()) patch.album = f.album;
@@ -58,10 +59,10 @@ function Dialog({ ed }) {
           </div>
         )}
         {single && <label className="field"><span>Title</span><input value={f.title} onChange={set('title')} required /></label>}
-        <label className="field"><span>Artist</span><input value={f.artist} onChange={set('artist')} placeholder={single ? UNKNOWN : 'Keep current'} /></label>
+        <label className="field"><span>{ed.init.renameArtist ? 'Artist name' : single ? 'Artists (separate with ;)' : 'Artists (separate with ;)'}</span><input value={f.artist} onChange={set('artist')} placeholder={single ? UNKNOWN : 'Keep current'} /></label>
         <label className="field"><span>Album</span><input value={f.album} onChange={set('album')} placeholder={single ? 'No album' : 'Keep current'} /></label>
         {single && <label className="field"><span>Track number</span><input type="number" min="0" value={f.trackNo} onChange={set('trackNo')} /></label>}
-        <p className="muted small">Songs are grouped into an artist or album once two or more share the same artist (and album).</p>
+        <p className="muted small">Songs are grouped into an artist or album once two or more share the same artist (and album). A song with several artists appears under each of them — separate names with “;” (or commas).</p>
         <div className="row end"><button type="button" className="btn ghost" onClick={lib.closeEdit}>Cancel</button><button className="btn">Save</button></div>
       </form>
     </div>

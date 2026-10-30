@@ -22,7 +22,7 @@ async function gunzip(buf) {
  * @param {{records:any[], covers:Record<string,Blob|'none'>, profile:any, playlists:any[], stats:any}} src
  * @returns {Promise<Blob>} compressed backup file
  */
-export async function buildExport({ records, covers, profile, playlists, stats, theme = null }, shrink = shrinkImage) {
+export async function buildExport({ records, covers, profile, playlists, stats, daily = {}, theme = null }, shrink = shrinkImage) {
   const images = [], seen = new Map();
   const addImage = async (blob, max) => {
     if (!blob || blob === 'none') return null;
@@ -51,10 +51,17 @@ export async function buildExport({ records, covers, profile, playlists, stats, 
   const outStats = {};
   for (const [id, s] of Object.entries(stats)) if (idToFp.has(id)) outStats[idToFp.get(id)] = s;
 
+  const outDaily = {};
+  for (const [date, day] of Object.entries(daily)) {
+    const songsByFp = {};
+    for (const [id, sec] of Object.entries(day.songs || {})) if (idToFp.has(id)) songsByFp[idToFp.get(id)] = sec;
+    if (Object.keys(songsByFp).length) outDaily[date] = { songs: songsByFp, plays: day.plays || 0 };
+  }
+
   const data = {
     app: MAGIC, version: 1, exportedAt: new Date().toISOString(),
     profile: { name: profile.name || '', username: profile.username || '', avatar: await addImage(profile.avatar, 512) },
-    theme, images, songs, covers: outCovers, stats: outStats,
+    theme, images, songs, covers: outCovers, stats: outStats, daily: outDaily,
     playlists: playlists.map((p) => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, songs: p.trackIds.map((id) => idToFp.get(id)).filter(Boolean) })),
   };
   return gzip(JSON.stringify(data));
@@ -107,8 +114,15 @@ export async function planImport(data, records, { uid, now = Date.now() }) {
   const stats = {};
   for (const [fp, s] of Object.entries(data.stats || {})) if (idByFp.has(fp)) stats[idByFp.get(fp)] = s;
 
+  const daily = {};
+  for (const [date, day] of Object.entries(data.daily || {})) {
+    const songs = {};
+    for (const [fp, sec] of Object.entries(day.songs || {})) if (idByFp.has(fp)) songs[idByFp.get(fp)] = sec;
+    if (Object.keys(songs).length) daily[date] = { songs, plays: day.plays || 0 };
+  }
+
   return {
-    updated, created, covers, playlists, stats,
+    updated, created, covers, playlists, stats, daily,
     theme: data.theme || null,
     profile: { name: data.profile?.name || '', username: data.profile?.username || '', avatar: img(data.profile?.avatar) },
     summary: { matched, missing: created.length, playlists: playlists.length },

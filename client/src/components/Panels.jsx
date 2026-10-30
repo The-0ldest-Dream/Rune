@@ -4,8 +4,9 @@ import { usePlayer } from '../store/player.jsx';
 import { useLibrary } from '../store/library.jsx';
 import { EQ_LABELS, PRESETS } from '../audio/engine.js';
 import { chainDb, logFreqs } from '../audio/eqMath.js';
+import { activeLine, hasLyrics, parseLrc } from '../lyrics.js';
 import Visualizer from './Visualizer.jsx';
-import { Cover, Icon, IconButton, LikeButton, albumHref, artistHref, fmtTime } from './ui.jsx';
+import { ArtistLinks, Cover, Icon, IconButton, LikeButton, albumHref, fmtTime } from './ui.jsx';
 
 /** Hosts the player's <video> element, so a music video shows up where a cover normally would. */
 export function VideoSurface({ className = '' }) {
@@ -33,7 +34,7 @@ export function NowPlaying() {
         : <Cover src={current.cover} seed={current.albumKey || current.id} label={current.title} className="big" />}
       <div className="np-title"><h2>{current.title}</h2><LikeButton track={current} size={24} /></div>
       <p className="muted">
-        {lib.artistByKey.has(current.artistKey) ? <a href={artistHref(current.artistKey)}>{current.artist}</a> : current.artist}
+        <ArtistLinks track={current} />
         {current.album ? <> · {lib.albumByKey.has(current.albumKey) ? <a href={albumHref(current.albumKey)}>{current.album}</a> : current.album}</> : null}
       </p>
       <Visualizer />
@@ -84,6 +85,143 @@ function Slider({ label, value, min = -12, max = 12, onChange, unit = 'dB' }) {
         style={{ '--p': `${((value - min) / (max - min)) * 100}%` }} />
       <output>{value > 0 ? '+' : ''}{value} {unit}</output>
     </label>
+  );
+}
+
+/** Loads lyrics for a song: stored (file tags / .lrc) first, then — if the user allowed it — the online lookup. */
+function useLyrics(track) {
+  const lib = useLibrary();
+  const [state, setState] = useState({ status: 'idle' });
+  const [again, setAgain] = useState(0);
+  const trackRef = useRef(track);
+  trackRef.current = track;
+  const id = track?.id, kind = track?.kind;
+  useEffect(() => {
+    let live = true;
+    if (!id) { setState({ status: 'idle' }); return undefined; }
+    if (kind === 'video') { setState({ status: 'video' }); return undefined; }
+    setState({ status: 'loading' });
+    (async () => {
+      const rec = await lib.getLyrics(id);
+      if (!live) return;
+      if (hasLyrics(rec)) { setState({ status: 'ready', rec }); return; }
+      if (rec?.miss && Date.now() - rec.at < 30 * 86400000) { setState({ status: 'none' }); return; }   // looked before: don't ask again for 30 days
+      if (lib.lyricsOnline === '1') {
+        try {
+          const r = await lib.findLyricsOnline(trackRef.current);
+          if (live) setState(hasLyrics(r) ? { status: 'ready', rec: r } : { status: 'none' });
+        } catch { if (live) setState({ status: 'error' }); }
+      } else setState({ status: lib.lyricsOnline === '0' ? 'none' : 'ask' });
+    })();
+    return () => { live = false; };
+  }, [id, kind, lib.lyricsTick, lib.lyricsOnline, again]); // eslint-disable-line react-hooks/exhaustive-deps
+  return { state, retry: async () => {
+    setState({ status: 'loading' });
+    try { const r = await lib.findLyricsOnline(trackRef.current); setState(hasLyrics(r) ? { status: 'ready', rec: r } : { status: 'none' }); }
+    catch { setState({ status: 'error' }); }
+  }, refresh: () => setAgain((n) => n + 1) };
+}
+
+const SOURCES = { file: 'embedded in the song file', lrc: 'from a .lrc file', online: 'LRCLIB (online)' };
+
+/** Lyrics for the current song; synced lyrics follow the music and can be clicked to seek. */
+export function LyricsPanel({ large = false }) {
+  const { current, time, seek } = usePlayer();
+  const lib = useLibrary();
+  const { state, retry } = useLyrics(current);
+  const [dismissed, setDismissed] = useState(false);
+  const box = useRef(null);
+  const manual = useRef(0);                         // timestamp of the last manual scroll
+  const parsed = useMemo(() => (state.rec ? parseLrc(state.rec.raw) : null), [state.rec]);
+  const active = parsed?.synced ? activeLine(parsed.lines, time + 0.2) : -1;
+
+  useEffect(() => {
+    if (!parsed?.synced || active < 0 || !box.current || Date.now() - manual.current < 4000) return;
+    const el = box.current.querySelector(`[data-i="${active}"]`);
+    if (el) box.current.scrollTo({ top: el.offsetTop - box.current.clientHeight / 2 + el.clientHeight / 2, behavior: 'smooth' });
+  }, [active, parsed]);
+
+  const msg = (icon, text, extra) => <div className="panel-empty"><Icon name={icon} size={36} /><p>{text}</p>{extra}</div>;
+  if (!current) return msg('mic', 'Play a song to see its lyrics.');
+  if (state.status === 'video') return msg('video', 'Lyrics aren’t available for videos.');
+  if (state.status === 'loading' || state.status === 'idle') return <div className="status" role="status"><span className="spinner" /> Looking for lyrics…</div>;
+  if (state.status === 'ask' && !dismissed) {
+    return msg('mic', 'No lyrics are stored for this song. Rune can look them up online automatically, once per song, using the free LRCLIB database.', (
+      <>
+        <p className="muted small">This sends the song’s title, artist, album and length to lrclib.net. You can switch it off any time in Profile.</p>
+        <div className="row center"><button className="btn" onClick={() => lib.setLyricsOnline(true)}>Find lyrics online</button><button className="btn ghost" onClick={() => setDismissed(true)}>Not now</button></div>
+      </>
+    ));
+  }
+  if (state.status === 'error') return msg('mic', 'Couldn’t reach the lyrics service. Check your connection.', <button className="btn" onClick={retry}>Try again</button>);
+  if (state.status !== 'ready') {
+    return msg('mic', 'No lyrics found for this song.', lib.lyricsOnline === '1'
+      ? <button className="btn ghost" onClick={retry}>Search again</button>
+      : <p className="muted small">Turn on online lyrics in Profile, or put a .lrc file with the same name next to the song.</p>);
+  }
+  return (
+    <div className={`lyrics ${large ? 'large' : ''} ${parsed.synced ? 'synced' : 'plain'}`} ref={box}
+      onWheel={() => { manual.current = Date.now(); }} onTouchMove={() => { manual.current = Date.now(); }}>
+      {parsed.lines.map((l, i) => (
+        <p key={i} data-i={i} className={`ly-line ${i === active ? 'active' : ''} ${!l.text ? 'gap' : ''}`}
+          onClick={parsed.synced ? () => { manual.current = 0; seek(l.t); } : undefined}>{l.text || '\u00a0'}</p>
+      ))}
+      <p className="ly-source">Lyrics {SOURCES[state.rec.source] || ''}{parsed.synced ? ' · synced' : ''}</p>
+    </div>
+  );
+}
+
+const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const SLEEPS = [15, 30, 45, 60];
+const mmss = (ms) => { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
+/** Playback speed, sleep timer, crossfade and gapless playback. */
+export function PlaybackPanel() {
+  const { rate, setRate, xfade, setXfade, gapless, setGapless, sleep, setSleep } = usePlayer();
+  const [now, setNow] = useState(Date.now());
+  const [custom, setCustom] = useState('');
+  useEffect(() => {
+    if (sleep.mode !== 'timer') return undefined;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [sleep.mode]);
+  const left = sleep.mode === 'timer' ? Math.max(0, sleep.endsAt - now) : 0;
+  return (
+    <div className="playback">
+      <section>
+        <h3>Speed <span className="muted">· {rate}×</span></h3>
+        <div className="pills" role="group" aria-label="Playback speed">
+          {SPEEDS.map((v) => <button key={v} className={`pill ${rate === v ? 'on' : ''}`} onClick={() => setRate(v)}>{v}×</button>)}
+        </div>
+        <input type="range" min="0.5" max="2" step="0.05" value={rate} aria-label="Playback speed" onChange={(e) => setRate(Number(e.target.value))}
+          style={{ '--p': `${((rate - 0.5) / 1.5) * 100}%` }} />
+      </section>
+
+      <section>
+        <h3>Sleep timer {sleep.mode === 'timer' && <span className="muted">· stops in {mmss(left)}</span>}{sleep.mode === 'song' && <span className="muted">· after this song</span>}</h3>
+        <div className="pills" role="group" aria-label="Sleep timer">
+          <button className={`pill ${sleep.mode === 'off' ? 'on' : ''}`} onClick={() => setSleep(null)}>Off</button>
+          {SLEEPS.map((m) => <button key={m} className={`pill ${sleep.mode === 'timer' && sleep.minutes === m ? 'on' : ''}`} onClick={() => setSleep({ minutes: m })}>{m} min</button>)}
+          <button className={`pill ${sleep.mode === 'song' ? 'on' : ''}`} onClick={() => setSleep('song')}>End of song</button>
+        </div>
+        <form className="row" onSubmit={(e) => { e.preventDefault(); const m = Number(custom); if (m >= 1 && m <= 720) { setSleep({ minutes: Math.round(m) }); setCustom(''); } }}>
+          <input className="filter-input" type="number" min="1" max="720" placeholder="Custom minutes" value={custom} onChange={(e) => setCustom(e.target.value)} aria-label="Custom minutes" />
+          <button className="btn ghost" disabled={!custom}>Set</button>
+        </form>
+        <p className="muted small">The music fades out over the last 10 seconds.</p>
+      </section>
+
+      <section>
+        <h3>Transitions <span className="muted">· {xfade ? `${xfade} s crossfade` : 'no crossfade'}</span></h3>
+        <input type="range" min="0" max="12" step="1" value={xfade} aria-label="Crossfade seconds" onChange={(e) => setXfade(Number(e.target.value))}
+          style={{ '--p': `${(xfade / 12) * 100}%` }} />
+        <label className="switch small">
+          <input type="checkbox" checked={gapless} onChange={(e) => setGapless(e.target.checked)} />
+          <span>Gapless playback (no pause between songs)</span>
+        </label>
+        <p className="muted small">Crossfade blends the end of a song into the next one. Music videos never overlap.</p>
+      </section>
+    </div>
   );
 }
 

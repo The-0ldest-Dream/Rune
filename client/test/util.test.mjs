@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { groupTracks, artistKeyOf, albumKeyOf, UNKNOWN, rankByStats, fmtListened } from '../src/util.js';
+import { groupTracks, artistKeyOf, albumKeyOf, artistInfo, parseArtists, UNKNOWN, rankByStats, fmtListened } from '../src/util.js';
 
-const mk = (id, artist, album, trackNo = 0) => {
+const mk = (id, artist, album, trackNo = 0, albumArtist = '') => {
   const t = { id, title: `Song ${id}`, artist, album, trackNo };
-  t.artistKey = artistKeyOf(t); t.albumKey = albumKeyOf(t);
+  const info = artistInfo(artist, albumArtist);
+  Object.assign(t, { artist: info.artist || UNKNOWN, artists: info.artists, artistKeys: info.artistKeys, artistKey: info.artistKey, albumArtistName: info.albumArtistName, albumArtistKey: info.albumArtistKey });
+  t.albumKey = info.albumArtistKey && album ? `${info.albumArtistKey}|${album.toLowerCase().trim()}` : '';
   return t;
 };
 
@@ -51,4 +53,38 @@ test('every theme is readable', () => {
     assert.ok(contrast(v['--accent'], v['--panel']) >= 3, `${t.id}: accent on panel ${contrast(v['--accent'], v['--panel']).toFixed(1)}`);
     assert.ok(contrast(v['--on-text'], v['--text']) >= 7, `${t.id}: button text`);
   }
+});
+
+
+test('duplicate and multiple artists', () => {
+  assert.deepEqual(parseArtists('Radiohead, Radiohead'), ['Radiohead']);
+  assert.deepEqual(parseArtists('radiohead,  RADIOHEAD ,Radiohead'), ['radiohead']);
+  assert.deepEqual(parseArtists('Lana Del Rey, Bleachers, Lana Del Rey, Bleachers'), ['Lana Del Rey', 'Bleachers']);
+  assert.deepEqual(parseArtists('Doja Cat feat. SZA'), ['Doja Cat', 'SZA']);
+  assert.deepEqual(parseArtists('JVKE, Jake Lawson, Someone'), ['JVKE', 'Jake Lawson', 'Someone']);
+  assert.deepEqual(parseArtists('Simon & Garfunkel'), ['Simon & Garfunkel']);          // "&" is part of a name
+  assert.deepEqual(parseArtists('AC/DC'), ['AC/DC']);
+  assert.deepEqual(parseArtists('Tyler, The Creator, Frank Ocean'), ['Tyler, The Creator', 'Frank Ocean']);
+  assert.deepEqual(parseArtists('Earth, Wind & Fire'), ['Earth, Wind & Fire']);
+  assert.deepEqual(parseArtists('Brand, New; Other'), ['Brand, New', 'Other']);          // ";" is explicit: commas stay inside names
+  assert.deepEqual(parseArtists('Unknown artist'), []); assert.deepEqual(parseArtists(''), []);
+  assert.equal(artistKeyOf({ artist: 'Radiohead, Radiohead' }), artistKeyOf({ artist: 'Radiohead' }));
+});
+
+test('same artist written two ways makes ONE artist; co-artists get the song too', () => {
+  const g = groupTracks([
+    mk(1, 'Radiohead', 'OK Computer', 1), mk(2, 'Radiohead, Radiohead', 'OK Computer', 2), mk(3, 'Radiohead', 'Kid A', 1),
+    mk(4, 'Lana Del Rey, Bleachers, Lana Del Rey, Bleachers', 'Norman', 1), mk(5, 'Lana Del Rey', 'Norman', 2), mk(6, 'Bleachers', 'Strange Desire', 1),
+    mk(7, 'Bleachers, Lana Del Rey', 'Singles', 1, 'Bleachers'),
+  ]);
+  assert.deepEqual(g.artists.map((a) => a.name), ['Bleachers', 'Lana Del Rey', 'Radiohead']);
+  const radiohead = g.artistByKey.get('radiohead');
+  assert.equal(radiohead.tracks.length, 3);                                              // not split into two artists
+  assert.equal(g.albumByKey.get('radiohead|ok computer').tracks.length, 2);               // "Radiohead, Radiohead" joins the same album
+  const lana = g.artistByKey.get('lana del rey'), bleachers = g.artistByKey.get('bleachers');
+  assert.deepEqual(lana.tracks.map((t) => String(t.id)).sort(), ['4', '5', '7']);
+  assert.deepEqual(bleachers.tracks.map((t) => String(t.id)).sort(), ['4', '6', '7']);     // the duet is under both names
+  assert.equal(g.albumByKey.get('lana del rey|norman').tracks.length, 2);
+  assert.equal(mk(7, 'Bleachers, Lana Del Rey', 'Singles', 1, 'Bleachers').albumKey, 'bleachers|singles'); // album-artist tag wins when it names a credited artist
+  assert.equal(mk(8, 'Band', 'X', 1, 'Various Artists').albumKey, 'band|x');             // unrelated album-artist is ignored
 });

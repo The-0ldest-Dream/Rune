@@ -72,3 +72,21 @@ test('garbage input never throws', async () => {
   const t = await readTags(file(new Uint8Array(500).fill(9)));
   assert.equal(t.title, ''); assert.equal(t.art, null);
 });
+
+test('embedded lyrics: ID3 USLT, FLAC LYRICS and MP4 ©lyr', async () => {
+  const frame = (id, body) => cat(enc(id), be32(body.length), Uint8Array.of(0, 0), body);
+  const tag = (frames) => { const body = cat(...frames); return cat(enc('ID3'), Uint8Array.of(3, 0, 0), ss32(body.length), body); };
+  const uslt = frame('USLT', cat(Uint8Array.of(3), enc('eng'), enc('desc'), Uint8Array.of(0), enc('[00:01.00]Hello\n[00:02.00]World')));
+  let t = await readTags(file(cat(tag([frame('TIT2', cat(Uint8Array.of(3), enc('S'))), uslt]), new Uint8Array(50))));
+  assert.equal(t.lyrics, '[00:01.00]Hello\n[00:02.00]World');
+  const kv = (s) => cat(le32(enc(s).length), enc(s));
+  const vc = cat(le32(1), enc('x'), le32(2), kv('TITLE=T'), kv('LYRICS=La la\r\nlaaa'));
+  t = await readTags(file(cat(enc('fLaC'), Uint8Array.of(0x84, 0, 0, vc.length), vc)));
+  assert.equal(t.lyrics, 'La la\nlaaa');
+  const latin = (s) => Uint8Array.from(s, (c) => c.charCodeAt(0));
+  const box = (type, ...parts) => { const body = cat(...parts); return cat(be32(body.length + 8), latin(type), body); };
+  const item = (type, payload) => box(type, box('data', be32(1), be32(0), payload));
+  const moov = box('moov', box('udta', box('meta', be32(0), box('ilst', item('\u00a9lyr', enc('mp4 words'))))));
+  t = await readTags(file(cat(box('ftyp', enc('M4A '), be32(0)), moov)));
+  assert.equal(t.lyrics, 'mp4 words');
+});

@@ -47,6 +47,8 @@ export default function PlayerBar({ panel, setPanel, onFull, full }) {
       </div>
 
       <div className="pb-right">
+        <IconButton icon="mic" label="Lyrics" active={panel.open && panel.tab === 'lyrics'} onClick={() => toggleTab('lyrics')} />
+        <IconButton icon="timer" label="Playback: speed, sleep timer, crossfade" active={(panel.open && panel.tab === 'play') || p.sleep.mode !== 'off' || p.rate !== 1} onClick={() => toggleTab('play')} />
         <IconButton icon="eq" label="Equalizer" active={panel.open && panel.tab === 'eq'} onClick={() => toggleTab('eq')} />
         <IconButton icon="queue" label="Queue" active={panel.open && panel.tab === 'queue'} onClick={() => toggleTab('queue')} />
         <IconButton icon={p.muted || p.volume === 0 ? 'mute' : 'volume'} label={p.muted ? 'Unmute' : 'Mute'} onClick={p.toggleMute} />

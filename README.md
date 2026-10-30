@@ -35,9 +35,13 @@ If a link says "not found", the latest build is still being prepared — try aga
 ## What you can do
 
 - 🎵 **Play your own music** — MP3, FLAC, OGG, Opus, M4A, WAV and more. Drag files in or pick a whole folder.
-- 🖼️ **Automatic covers, artists and albums** — cover art, title, artist and album are read from your files. Two or more songs by the same artist create an artist page; two or more from the same album create an album.
+- 🔤 **Always tidy** — your songs are listed A → Z by name.
+- 🖼️ **Automatic covers, artists and albums** — cover art, title, artist and album are read from your files. Two or more songs by the same artist create an artist page; two or more from the same album create an album. Tags like “Radiohead, Radiohead” count as one artist, and a song with several artists (“Lana Del Rey, Bleachers”) is listed under each of them.
+- 📁 **Auto-add from a folder** — on Chrome/Edge (computer) link your music folder once; new songs and `.lrc` lyrics files are added automatically.
 - ✏️ **Fix and personalise** — edit song info (one song or many at once) and set your own cover for any song, album, artist, playlist or your profile photo, with crop and zoom.
 - 🎬 **Music videos too** — add videos and watch them in the same player as your songs.
+- 🎤 **Lyrics** — shown from the song file or a `.lrc` file next to it, with synced highlighting (click a line to jump). Optionally Rune can look up the rest online, once per song, via the free LRCLIB database (you choose in *Profile → Lyrics*).
+- ⏱️ **Playback controls** — speed (0.5×–2×), sleep timer (with fade-out, or “end of song”), gapless playback and crossfade (up to 12 s).
 - 🎚️ **Equalizer & visualizer** — bass / mid / treble, a 10-band equalizer with presets and a live response curve, automatic headroom so boosts never distort, and visualizer bars.
 - 🎨 **Themes** — 11 hand-tuned themes (dark and light) plus a custom option where you pick your own colours: *Profile → Appearance*.
 - 🪟 **Your layout** — drag the thin line between the sidebar, the page and the player panel to resize them (the sidebar collapses to a slim icon column). Double-click a line to reset.
@@ -46,6 +50,9 @@ If a link says "not found", the latest build is still being prepared — try aga
 - 🔍 **Fast search** — songs, artists, playlists and videos. The search bar shows the songs you recently played from search. Works with no internet.
 - 🖥️ **Expanded & full-screen player** — the arrow in the player panel opens a big cover view inside the app; the full-screen button in the player bar also fills the whole screen. The backdrop is coloured from the artwork; after 5 quiet seconds it becomes a clean, immersive view.
 - 📊 **Your stats** — see your top 10 most-listened songs on your profile; Home shows your top playlists, albums and most-played songs.
+- 📋 **Playlist files** — import `.m3u` / `.m3u8` / `.pls` playlists and export yours as M3U.
+- 📈 **Recap** — a last-7-days and this-year listening recap on your profile: time listened, plays, best day, top songs and artists.
+- 🔀 **Quick command** — type or tap *Shuffle all* in the search bar.
 - 💾 **Backup & sync between devices** — export your data (everything except the song files) and import it on another device.
 
 ## Getting started in one minute
@@ -80,6 +87,10 @@ Your songs themselves are never exported — only the information around them.
 **The Android app stops when the screen is off.** Android can pause apps in the background. Turn off battery optimisation for Rune, or keep the screen on.
 
 **Videos don't play.** MP4 (H.264) and WebM work everywhere; MKV and AVI usually don't work in browsers.
+
+**Lyrics.** Put a `.lrc` file with the same name next to a song (drop both in together, or keep them in a linked folder) for synced lyrics. Embedded lyrics in MP3/FLAC/M4A files are read automatically.
+
+**Folder linking isn't available.** It needs a computer with Chrome or Edge. Elsewhere, drag files in instead.
 
 **Media keys and the taskbar.** Keyboard media keys and the system volume pop-up work in the browser and the apps. The Windows app also adds Previous / Play-Pause / Next buttons to its taskbar preview (installed websites can't do that).
 

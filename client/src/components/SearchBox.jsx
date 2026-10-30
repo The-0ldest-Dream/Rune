@@ -21,7 +21,7 @@ function SongRow({ t, onPlay, onForget }) {
 
 export default function SearchBox({ route }) {
   const lib = useLibrary();
-  const { playQueue } = usePlayer();
+  const { playQueue, shuffleAll } = usePlayer();
   const [value, setValue] = useState('');
   const [open, setOpen] = useState(false);
   const box = useRef(null);
@@ -36,13 +36,19 @@ export default function SearchBox({ route }) {
 
   const q = value.trim().toLowerCase();
   const songs = useMemo(
-    () => (q ? lib.tracks.filter((t) => matches(t, q)).slice(0, 6) : lib.tracks.filter((t) => !t.missing).slice().reverse().slice(0, 6)),
+    () => (q ? lib.tracks.filter((t) => matches(t, q)).slice(0, 6) : lib.tracks.filter((t) => !t.missing).slice(0, 6)),
     [lib.tracks, q]
   );
   const artists = useMemo(() => (q ? lib.artists.filter((a) => a.name.toLowerCase().includes(q)).slice(0, 3) : []), [lib.artists, q]);
   const recent = useMemo(() => lib.searchPlays.map((id) => lib.byId.get(id)).filter((t) => t && !t.missing), [lib.searchPlays, lib.byId]);
 
+  // Quick command: "Shuffle all" (shown when the box is empty, or while typing something like "shuf…")
+  const playable = useMemo(() => lib.tracks.filter((t) => !t.missing), [lib.tracks]);
+  const showShuffle = !q || 'shuffle all'.startsWith(q) || /^shuffle\b/.test(q);
+  const runShuffle = () => { setOpen(false); setValue(''); shuffleAll(playable, 'Shuffle all'); };
+
   const go = () => {
+    if (/^shuffle( all)?$/.test(q)) { runShuffle(); return; }
     setOpen(false);
     location.hash = q ? `#/search/${encodeURIComponent(value.trim())}` : '#/search';
   };
@@ -58,6 +64,17 @@ export default function SearchBox({ route }) {
 
       {open && (
         <div className="dropdown" role="listbox">
+          {showShuffle && (
+            <section>
+              <div className="dd-head"><h4>Quick commands</h4></div>
+              <div className="dd-row">
+                <button className="dd-main" onClick={runShuffle} disabled={!playable.length}>
+                  <span className="cmd-icon"><Icon name="shuffle" size={20} /></span>
+                  <span className="t-text"><span className="t-title">Shuffle all</span><span className="t-artist">{playable.length ? `Play your ${playable.length} songs in random order` : 'Add songs to use this'}</span></span>
+                </button>
+              </div>
+            </section>
+          )}
           {!q && recent.length > 0 && (
             <section>
               <div className="dd-head"><h4>Recently played from search</h4><button className="link-btn" onClick={lib.clearSearchPlays}>Clear all</button></div>

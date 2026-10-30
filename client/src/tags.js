@@ -27,6 +27,24 @@ function textFrame(data) {
   return text.split('\u0000').map((s) => s.trim()).filter(Boolean);
 }
 
+function decodeText(enc, body) {
+  if (enc === 1 || enc === 2) {
+    const be = enc === 2 || (body[0] === 0xfe && body[1] === 0xff);
+    const skip = (body[0] === 0xff && body[1] === 0xfe) || (body[0] === 0xfe && body[1] === 0xff) ? 2 : 0;
+    return dec(be ? 'utf-16be' : 'utf-16le', body.subarray(skip));
+  }
+  return dec(enc === 3 ? 'utf-8' : 'windows-1252', body);
+}
+
+/** USLT / ULT: encoding, language(3), content descriptor (terminated), lyrics text. */
+function uslt(data) {
+  const enc = data[0];
+  let p = 4;
+  if (enc === 1 || enc === 2) { while (p + 1 < data.length && !(data[p] === 0 && data[p + 1] === 0)) p += 2; p += 2; }
+  else { while (p < data.length && data[p] !== 0) p++; p += 1; }
+  return decodeText(enc, data.subarray(p)).replace(/\u0000+$/g, '');
+}
+
 function apic(data, v22) {
   const enc = data[0];
   let p = 1, mime;
@@ -61,6 +79,7 @@ async function readId3(file) {
     if (!fsize) continue;
     const map = { TIT2: 'title', TT2: 'title', TPE1: 'artist', TP1: 'artist', TALB: 'album', TAL: 'album', TRCK: 'track', TRK: 'track', TPE2: 'albumArtist', TP2: 'albumArtist' };
     if (map[id]) tags[map[id]] = textFrame(data);
+    else if ((id === 'USLT' || id === 'ULT') && !tags.lyrics) tags.lyrics = [uslt(data)];
     else if (id === 'APIC' || id === 'PIC') {
       const pic = apic(data, v22);
       const rank = pic.type === 3 ? 100 : pic.type === 0 ? 50 : 10;
@@ -97,7 +116,7 @@ function flacPicture(b) {
   return { type, mime, bytes: b.subarray(o, o + len) };
 }
 
-const fromVorbis = (out) => ({ title: out.TITLE, artist: out.ARTIST, album: out.ALBUM, albumArtist: out.ALBUMARTIST, track: out.TRACKNUMBER });
+const fromVorbis = (out) => ({ title: out.TITLE, artist: out.ARTIST, album: out.ALBUM, albumArtist: out.ALBUMARTIST, track: out.TRACKNUMBER, lyrics: out.LYRICS || out.UNSYNCEDLYRICS });
 
 async function readFlac(file) {
   const buf = new Uint8Array(await file.slice(0, 16 * 1024 * 1024).arrayBuffer());
@@ -197,6 +216,7 @@ export async function readMp4(file) {
     if (item.type === '\u00a9nam') res.title = [dec('utf-8', payload)];
     else if (item.type === '\u00a9ART') res.artist = [dec('utf-8', payload)];
     else if (item.type === '\u00a9alb') res.album = [dec('utf-8', payload)];
+    else if (item.type === '\u00a9lyr') res.lyrics = [dec('utf-8', payload)];
     else if (item.type === 'aART') res.albumArtist = [dec('utf-8', payload)];
     else if (item.type === 'trkn' && payload.length >= 4) res.track = [String((payload[2] << 8) | payload[3])];
     else if (item.type === 'covr') art = toBlob(payload, flag === 14 ? 'image/png' : 'image/jpeg');
@@ -213,14 +233,15 @@ export async function readTags(file) {
     const artists = [...new Set(first(raw.artist))];
     return {
       title: first(raw.title)[0] || '',
-      artist: artists.join(', '),
+      artist: artists.length > 1 ? artists.join('; ') : artists[0] || '',
       album: first(raw.album)[0] || '',
       albumArtist: first(raw.albumArtist)[0] || '',
       trackNo: parseInt(first(raw.track)[0], 10) || 0,
+      lyrics: (Array.isArray(raw.lyrics) && raw.lyrics[0] ? String(raw.lyrics[0]).replace(/\r\n?/g, '\n').trim() : '') || '',
       art: raw.art || null,
     };
   } catch (err) {
     if (globalThis.__TAGDEBUG) console.error(err);
-    return { title: '', artist: '', album: '', albumArtist: '', trackNo: 0, art: null };
+    return { title: '', artist: '', album: '', albumArtist: '', trackNo: 0, art: null, lyrics: '' };
   }
 }
