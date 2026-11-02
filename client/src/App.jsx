@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { LibraryProvider, useLibrary } from './store/library.jsx';
 import { PlayerProvider, usePlayer } from './store/player.jsx';
 import PlayerBar from './components/PlayerBar.jsx';
 import SearchBox from './components/SearchBox.jsx';
 import EditDialog from './components/EditDialog.jsx';
 import FullScreen from './components/FullScreen.jsx';
-import { Equalizer, LyricsPanel, NowPlaying, PlaybackPanel, Queue } from './components/Panels.jsx';
+import FullPanel from './components/FullPanel.jsx';
+import { prefersReduced } from './effects.js';
+import { Equalizer, NowPlaying, PlaybackPanel, Queue } from './components/Panels.jsx';
 import { Avatar, Cover, Icon, IconButton } from './components/ui.jsx';
-import { DEFAULT_BACKDROP, backdropFor, backdropFromHue, dominantColor, hueFor } from './util.js';
+import { DEFAULT_BACKDROP, backdropFor, backdropFromHue, dominantColor, dominantPalette, hueFor } from './util.js';
 import Home from './views/Home.jsx';
 import Search from './views/Search.jsx';
 import ArtistsPage from './views/Artists.jsx';
@@ -24,7 +27,14 @@ function useRoute() {
   };
   const [route, setRoute] = useState(read);
   useEffect(() => {
-    const on = () => { setRoute(read()); document.querySelector('.main')?.scrollTo(0, 0); };
+    const apply = () => { setRoute(read()); document.querySelector('.main')?.scrollTo(0, 0); };
+    const on = () => {
+      // Smooth page change (and cover → page morph) where the browser supports View Transitions.
+      if (document.startViewTransition && !prefersReduced()) {
+        const t = document.startViewTransition(() => { flushSync(apply); });
+        t.ready?.catch(() => {}); t.finished?.catch(() => {});
+      } else apply();
+    };
     window.addEventListener('hashchange', on);
     return () => window.removeEventListener('hashchange', on);
   }, []);
@@ -130,7 +140,7 @@ function useBackdrop(current) {
     if (!current) { setBd(DEFAULT_BACKDROP); return undefined; }
     const fallback = backdropFromHue(hueFor(current.albumKey || current.id, current.title));
     if (!cover) setBd(fallback);
-    else dominantColor(cover).then((rgb) => live && setBd(rgb ? backdropFor(rgb) : fallback));
+    else Promise.all([dominantColor(cover), dominantPalette(cover)]).then(([rgb, pal]) => live && setBd({ ...(rgb ? backdropFor(rgb) : fallback), p: pal || fallback.p }));
     return () => { live = false; };
   }, [cover, id]); // eslint-disable-line react-hooks/exhaustive-deps
   return bd;
@@ -141,7 +151,8 @@ function Shell() {
   const { toggle, current } = usePlayer();
   const wide = useMedia('(min-width: 1101px)');
   const [panel, setPanel] = useState({ open: window.innerWidth > 1100, tab: 'now' });
-  const [full, setFull] = useState(false);
+  const [fullSection, setFullSection] = useState(null);   // which panel is expanded: 'now' | 'queue' | 'eq' | 'play'
+  const full = !!fullSection;
   const [winFull, setWinFull] = useState(!!document.fullscreenElement);
   const viaWindow = useRef(false);               // true when the full-screen view was opened together with browser full screen
   const [layout, setLayout] = useState(loadLayout);
@@ -154,7 +165,7 @@ function Shell() {
   const minimise = useCallback(() => {
     if (!isMobile()) return;
     setPanel((p) => (p.open ? { ...p, open: false } : p));
-    setFull(false);
+    setFullSection(null);
   }, []);
   useEffect(() => { minimise(); }, [route.name, route.arg, minimise]);
 
@@ -173,15 +184,15 @@ function Shell() {
   // ---- full screen ----
   // The arrow in the panel opens the expanded view INSIDE the app. The button in the player bar also makes the window itself full screen.
   const exitWindowFs = () => { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); };
-  const openExpanded = useCallback(() => setFull(true), []);
+  const openExpanded = useCallback((section = 'now') => setFullSection(section), []);
   const closeFull = useCallback(() => {
-    setFull(false);
+    setFullSection(null);
     if (viaWindow.current) { viaWindow.current = false; exitWindowFs(); }
   }, []);
   const toggleBarFullscreen = () => {
     if (full) { closeFull(); return; }
     viaWindow.current = true;
-    setFull(true);
+    setFullSection(panel.open ? panel.tab : 'now');      // expands whatever panel is showing, not always the cover
     document.documentElement.requestFullscreen?.().catch(() => {});
   };
   const toggleWindowFullscreen = useCallback(() => {
@@ -191,7 +202,7 @@ function Shell() {
   useEffect(() => {
     const on = () => {
       setWinFull(!!document.fullscreenElement);
-      if (!document.fullscreenElement && viaWindow.current) { viaWindow.current = false; setFull(false); }
+      if (!document.fullscreenElement && viaWindow.current) { viaWindow.current = false; setFullSection(null); }
     };
     document.addEventListener('fullscreenchange', on);
     return () => document.removeEventListener('fullscreenchange', on);
@@ -254,11 +265,11 @@ function Shell() {
   };
   const resetPane = (which) => () => { commit({ ...layout, [which]: DEF[which] }); setVar(`--${which === 'side' ? 'side' : 'panel'}-w`, DEF[which]); if (which === 'side') setCompact(false); };
 
-  const titles = { now: 'Now playing', queue: 'Queue', eq: 'Equalizer', play: 'Playback', lyrics: 'Lyrics' };
+  const titles = { now: 'Now playing', queue: 'Queue', eq: 'Equalizer', play: 'Playback' };
   const tint = panel.open && panel.tab === 'now' && current;
   return (
     <div ref={appRef}
-      style={{ '--c1': bd.c1, '--c2': bd.c2, '--side-w': `${layout.side}px`, '--panel-w': `${layout.panel}px` }}
+      style={{ '--c1': bd.c1, '--c2': bd.c2, '--p1': bd.p[0], '--p2': bd.p[1], '--p3': bd.p[2], '--p4': bd.p[3], '--side-w': `${layout.side}px`, '--panel-w': `${layout.panel}px` }}
       className={`app ${panel.open ? 'with-panel' : ''} ${current ? '' : 'no-bar'} ${tint ? 'np-tint' : ''} ${dragging ? 'resizing' : ''}`}>
       <Sidebar route={route} onNavigate={minimise} compact={compact && wide} />
       <main className="main">
@@ -270,7 +281,7 @@ function Shell() {
           <div className="side-head">
             <h2>{titles[panel.tab]}</h2>
             <span className="side-head-actions">
-              {current && <IconButton icon="expandArrow" label="Expand now playing" onClick={openExpanded} />}
+              {(panel.tab !== 'now' || current) && <IconButton icon="expandArrow" label={`Expand ${titles[panel.tab].toLowerCase()} to full screen`} onClick={() => openExpanded(panel.tab)} />}
               <IconButton icon="close" label="Close panel" onClick={() => setPanel({ ...panel, open: false })} />
             </span>
           </div>
@@ -279,7 +290,6 @@ function Shell() {
             {panel.tab === 'queue' && <Queue />}
             {panel.tab === 'eq' && <Equalizer />}
             {panel.tab === 'play' && <PlaybackPanel />}
-            {panel.tab === 'lyrics' && <LyricsPanel />}
           </div>
         </aside>
       )}
@@ -291,7 +301,8 @@ function Shell() {
         <div className={`resizer right ${dragging === 'panel' ? 'dragging' : ''}`} role="separator" aria-orientation="vertical" aria-label="Resize player panel" tabIndex={0}
           onPointerDown={startDrag('panel')} onDoubleClick={resetPane('panel')} onKeyDown={nudge('panel')} />
       )}
-      {full && <FullScreen onClose={closeFull} winFull={winFull} onToggleWindow={toggleWindowFullscreen} />}
+      {fullSection === 'now' && <FullScreen onClose={closeFull} winFull={winFull} onToggleWindow={toggleWindowFullscreen} />}
+      {full && fullSection !== 'now' && <FullPanel section={fullSection} onClose={closeFull} winFull={winFull} onToggleWindow={toggleWindowFullscreen} />}
       <PlayerBar panel={panel} setPanel={setPanel} full={full} onFull={toggleBarFullscreen} />
       <Toast />
       <EditDialog />

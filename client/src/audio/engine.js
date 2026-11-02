@@ -70,9 +70,9 @@ export class AudioEngine {
   }
 
   /** Fades element `from` out and `to` in over `seconds` (equal-power). */
-  crossfade(from, to, seconds) {
+  crossfade(from, to, seconds, curves) {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime, d = Math.max(0.05, seconds), c = fadeCurves(64);
+    const t = this.ctx.currentTime, d = Math.max(0.05, seconds), c = curves || fadeCurves(64);
     const gf = this.gains[from].gain, gt = this.gains[to].gain;
     gf.cancelScheduledValues(t); gt.cancelScheduledValues(t);
     gf.setValueAtTime(1, t); gt.setValueAtTime(0, t);

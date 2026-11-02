@@ -35,6 +35,14 @@ export function activeLine(lines, time) {
   return ans;
 }
 
+/** 0..1 progress through line `i` (until the next line begins; long instrumental gaps are capped at 8 s). */
+export function lineProgress(lines, i, time) {
+  if (i < 0 || !lines[i]) return 0;
+  const start = lines[i].t, end = lines[i + 1]?.t ?? start + 4;
+  const len = Math.min(Math.max(end - start, 0.5), 8);
+  return Math.min(1, Math.max(0, (time - start) / len));
+}
+
 export const hasLyrics = (rec) => !!rec && !rec.miss && !!String(rec.raw || '').trim();
 
 /** Free community lyrics database (https://lrclib.net). Sends title, artist, album and length. Returns raw LRC/plain text or null. */

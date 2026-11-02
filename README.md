@@ -40,19 +40,20 @@ If a link says "not found", the latest build is still being prepared — try aga
 - 📁 **Auto-add from a folder** — on Chrome/Edge (computer) link your music folder once; new songs and `.lrc` lyrics files are added automatically.
 - ✏️ **Fix and personalise** — edit song info (one song or many at once) and set your own cover for any song, album, artist, playlist or your profile photo, with crop and zoom.
 - 🎬 **Music videos too** — add videos and watch them in the same player as your songs.
-- 🎤 **Lyrics** — shown from the song file or a `.lrc` file next to it, with synced highlighting (click a line to jump). Optionally Rune can look up the rest online, once per song, via the free LRCLIB database (you choose in *Profile → Lyrics*).
-- ⏱️ **Playback controls** — speed (0.5×–2×), sleep timer (with fade-out, or “end of song”), gapless playback and crossfade (up to 12 s).
+- 🎤 **Lyrics** — a coloured lyrics card in *Now playing* (tap *Show more* to give it the whole panel), plus two full-screen looks: **Verse** (lyrics only) and **Duet** (cover and lyrics) on a colourful backdrop made from the cover's colours. Lines blur and fade with distance, and the line being sung fills in as it plays. Sources: shown from the song file or a `.lrc` file next to it, with synced highlighting (click a line to jump). Optionally Rune can look up the rest online, once per song, via the free LRCLIB database (you choose in *Profile → Lyrics*).
+- ⏱️ **Playback controls** — speed (0.5×–2×), sleep timer (with fade-out, or “end of song”), gapless playback and crossfade (up to 12 s). **Crossfade → Advanced** opens an editor: see the end of one song and the start of the next with their tempo, drag the fade curves, pick the length in bars, and hear the exact transition before you keep it.
 - 🎚️ **Equalizer & visualizer** — bass / mid / treble, a 10-band equalizer with presets and a live response curve, automatic headroom so boosts never distort, and visualizer bars.
+- ✨ **Effects** — beat-reactive glow behind the cover, smooth page transitions (the cover morphs into the page), blurred-depth lyrics. Switch them off with *Profile → Reduce effects* (they also follow your system's reduce-motion setting).
 - 🎨 **Themes** — 11 hand-tuned themes (dark and light) plus a custom option where you pick your own colours: *Profile → Appearance*.
 - 🪟 **Your layout** — drag the thin line between the sidebar, the page and the player panel to resize them (the sidebar collapses to a slim icon column). Double-click a line to reset.
 - ❤️ **Liked Songs** — tap the heart next to the song name to save it to the built-in *Liked Songs* playlist.
 - 📋 **Playlists and queue** — create playlists, add songs with the **+** button, reorder the queue by dragging.
 - 🔍 **Fast search** — songs, artists, playlists and videos. The search bar shows the songs you recently played from search. Works with no internet.
-- 🖥️ **Expanded & full-screen player** — the arrow in the player panel opens a big cover view inside the app; the full-screen button in the player bar also fills the whole screen. The backdrop is coloured from the artwork; after 5 quiet seconds it becomes a clean, immersive view.
+- 🖥️ **Expanded & full-screen player** — the arrow in any player panel (Now playing, Queue, Equalizer, Playback) expands *that* panel to full screen inside the app; the full-screen button in the player bar also fills the whole screen. The backdrop is coloured from the artwork; after 5 quiet seconds it becomes a clean, immersive view.
 - 📊 **Your stats** — see your top 10 most-listened songs on your profile; Home shows your top playlists, albums and most-played songs.
 - 📋 **Playlist files** — import `.m3u` / `.m3u8` / `.pls` playlists and export yours as M3U.
 - 📈 **Recap** — a last-7-days and this-year listening recap on your profile: time listened, plays, best day, top songs and artists.
-- 🔀 **Quick command** — type or tap *Shuffle all* in the search bar.
+- 🔀 **Quick command** — type or tap *Shuffle all* in the search bar. Every song in the search results has buttons to add it to the queue or to a playlist.
 - 💾 **Backup & sync between devices** — export your data (everything except the song files) and import it on another device.
 
 ## Getting started in one minute

@@ -201,8 +201,12 @@ export function backdropFor(rgb) {
   const top = Math.min(0.46, Math.max(0.28, l)), sat = Math.min(0.85, s);
   return { c1: `hsl(${Math.round(h)} ${Math.round(sat * 100)}% ${Math.round(top * 100)}%)`, c2: `hsl(${Math.round(h)} ${Math.round(sat * 100)}% ${Math.round(top * 48)}%)` };
 }
-export const backdropFromHue = (h) => ({ c1: `hsl(${h} 55% 32%)`, c2: `hsl(${h} 60% 14%)` });
-export const DEFAULT_BACKDROP = { c1: '#2a2a2a', c2: '#121212' };
+export const backdropFromHue = (h) => ({
+  c1: `hsl(${h} 55% 32%)`, c2: `hsl(${h} 60% 14%)`,
+  p: [`hsl(${h} 62% 46%)`, `hsl(${(h + 40) % 360} 66% 50%)`, `hsl(${(h + 320) % 360} 60% 42%)`, `hsl(${(h + 180) % 360} 48% 38%)`],
+});
+const FALLBACK_PALETTE = ['hsl(220 20% 30%)', 'hsl(240 18% 24%)', 'hsl(200 16% 26%)', 'hsl(260 14% 22%)'];
+export const DEFAULT_BACKDROP = { c1: '#2a2a2a', c2: '#121212', p: FALLBACK_PALETTE };
 
 const colourCache = new Map();
 export function dominantColor(url) {
@@ -228,3 +232,57 @@ export function dominantColor(url) {
 /** Cover for the built-in "Liked Songs" playlist: purple→blue gradient with a white heart. */
 export const LIKED_ID = 'liked';
 export const LIKED_COVER = `data:image/svg+xml,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#4a2bdc'/><stop offset='1' stop-color='#9ec8e8'/></linearGradient></defs><rect width='100' height='100' fill='url(#g)'/><path fill='white' transform='translate(28.4 27.4) scale(1.8)' d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/></svg>")}`;
+
+/** Up to `n` distinct, prominent colours of an image (RGBA bytes): popular + saturated first, each at least ~70 apart in RGB. */
+export function pickPalette(data, n = 4) {
+  const bins = new Map();
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 200) continue;
+    const r = data[i], g = data[i + 1], b = data[i + 2], key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+    const e = bins.get(key) || { n: 0, r: 0, g: 0, b: 0 };
+    e.n++; e.r += r; e.g += g; e.b += b; bins.set(key, e);
+  }
+  const cand = [...bins.values()].map((e) => {
+    const r = e.r / e.n, g = e.g / e.n, b = e.b / e.n, mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    const sat = mx ? (mx - mn) / mx : 0, light = (mx + mn) / 510, usable = light < 0.06 || light > 0.94 ? 0.25 : 1;
+    return { rgb: [r, g, b], score: e.n * (0.2 + sat * 1.8) * usable };
+  }).sort((a, b) => b.score - a.score);
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  const out = [];
+  for (const c of cand) {
+    if (out.every((o) => dist(o, c.rgb) > 70)) out.push(c.rgb);
+    if (out.length === n) break;
+  }
+  return out;
+}
+
+/** Turns picked colours into lively CSS colours (never muddy, never blinding); fills up to `n` with hue-shifted neighbours. */
+export function paletteColors(rgbs, n = 4) {
+  if (!rgbs.length) return FALLBACK_PALETTE.slice(0, n);
+  const css = (h, s, l) => `hsl(${Math.round(((h % 360) + 360) % 360)} ${Math.round(Math.min(0.9, Math.max(0.4, s)) * 100)}% ${Math.round(Math.min(0.6, Math.max(0.36, l)) * 100)}%)`;
+  const out = rgbs.map((rgb) => { const { h, s, l } = rgbToHsl(rgb); return css(h, s * 1.1 + 0.08, l); });
+  const base = rgbToHsl(rgbs[0]);
+  for (let k = 1; out.length < n; k++) out.push(css(base.h + 38 * k * (k % 2 ? 1 : -1), base.s * 1.1 + 0.08, base.l + 0.04 * k));
+  return out.slice(0, n);
+}
+
+const paletteCache = new Map();
+export function dominantPalette(url, n = 4) {
+  if (!paletteCache.has(url)) {
+    paletteCache.set(url, new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const size = 48, c = document.createElement('canvas');
+          c.width = c.height = size;
+          const g = c.getContext('2d', { willReadFrequently: true });
+          g.drawImage(img, 0, 0, size, size);
+          resolve(paletteColors(pickPalette(g.getImageData(0, 0, size, size).data, n), n));
+        } catch { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    }));
+  }
+  return paletteCache.get(url);
+}

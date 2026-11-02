@@ -32,3 +32,21 @@ test('online lookup: exact match, fallback search, miss and unknown artist', asy
   assert.equal(await fetchOnline({ ...t, artist: 'Unknown artist' }, mk(200, {})), null);
   await assert.rejects(fetchOnline(t, async () => ({ ok: false, status: 500 })), /lyrics service/);
 });
+
+import { lineProgress } from '../src/lyrics.js';
+import { bassEnergy, followLevel, glowAmount } from '../src/beat.js';
+test('line progress sweeps from 0 to 1 and is capped for long gaps', () => {
+  const { lines } = parseLrc('[00:10]a\n[00:14]b\n[01:00]c');
+  assert.equal(lineProgress(lines, 0, 10), 0); assert.equal(lineProgress(lines, 0, 12), 0.5); assert.equal(lineProgress(lines, 0, 20), 1);
+  assert.equal(lineProgress(lines, 1, 18), 0.5);          // 46 s gap is treated as 8 s
+  assert.equal(lineProgress(lines, -1, 5), 0);
+});
+test('beat glow reacts to bass hits only', () => {
+  const quiet = new Uint8Array(256).fill(20), hit = new Uint8Array(256); hit.fill(10); for (let i = 0; i < 6; i++) hit[i] = 255;
+  assert.ok(bassEnergy(hit) > 0.7 && bassEnergy(quiet) < 0.1);
+  let level = 0; for (let i = 0; i < 5; i++) level = followLevel(level, 1);
+  assert.ok(level > 0.9);
+  const down = followLevel(1, 0); assert.ok(down > 0.85 && down < 1);              // slow release
+  assert.ok(glowAmount(0.9, 0.3) > glowAmount(0.9, 0.9));                          // a rise beats steady loudness
+  assert.ok(glowAmount(0, 0) === 0 && glowAmount(1, 0) === 1);
+});

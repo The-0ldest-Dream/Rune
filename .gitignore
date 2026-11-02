@@ -1,3 +1,11 @@
 node_modules/
 client/dist/
-.env
+dist/
+.DS_Store
+*.log
+desktop/app/
+desktop/dist/
+desktop/node_modules/
+mobile/www/
+mobile/android/
+mobile/node_modules/

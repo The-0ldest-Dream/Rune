@@ -4,6 +4,7 @@ import { useLibrary } from '../store/library.jsx';
 import { usePlayer } from '../store/player.jsx';
 import { fmtListened } from '../util.js';
 import { lastDays, perMonth, summarize, yearKeys } from '../recap.js';
+import { getReduceFx, setReduceFx } from '../effects.js';
 import { DEFAULT_CUSTOM, THEMES, buildVars, getTheme, setTheme, subscribeTheme } from '../themes.js';
 import { CoverEditor } from '../components/CoverEditor.jsx';
 import { Icon, IconButton, Status } from '../components/ui.jsx';
@@ -267,6 +268,10 @@ export default function ProfilePage() {
         <h2 id="theme-title">Appearance</h2>
         <p className="muted">Pick a theme, or choose “Custom” and set your own colours. Text colours adjust automatically.</p>
         <ThemePicker />
+        <label className="switch fx-switch">
+          <input type="checkbox" defaultChecked={getReduceFx()} onChange={(e) => setReduceFx(e.target.checked)} />
+          <span>Reduce effects <span className="muted">(no beat glow, blur or page transitions)</span></span>
+        </label>
       </section>
 
       {apps.host && (

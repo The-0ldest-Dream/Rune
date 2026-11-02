@@ -578,12 +578,13 @@ export function LibraryProvider({ children }) {
     return { url, revoke: () => URL.revokeObjectURL(url) };
   }, []);
   const videoBlob = useCallback((id) => recMap.current.get(id)?.blob || null, []);
+  const fileBlob = videoBlob;                      // songs and videos are stored the same way
 
   const value = useMemo(() => ({
     ready, tracks, byId, videos, videoTracks, videoById, playlists, likedSet, searchPlays, recordSearchPlay, forgetSearchPlay, clearSearchPlays, artists: groups.artists, albums: groups.albums, artistByKey: groups.artistByKey, albumByKey: groups.albumByKey,
     profile, avatarUrl, stats, notice, setNotice, toast, editing,
     openEdit: (ids, init = {}) => setEditing({ ids, init }), closeEdit: () => setEditing(null),
-    addFiles, addVideos, removeFile: removeRecord, removeVideo: removeRecord, renameVideo, updateTracks, resolveSrc, videoBlob,
+    addFiles, addVideos, removeFile: removeRecord, removeVideo: removeRecord, renameVideo, updateTracks, resolveSrc, videoBlob, fileBlob,
     setCoverBlob, removeCover, artBlob, setAvatar, exportData, importData,
     createPlaylist, renamePlaylist, deletePlaylist, addToPlaylist, removeFromPlaylist, removeTrackFromPlaylist, toggleLike, isLiked: (id) => likedSet.has(id),
     saveProfile, beginListen, recordListen, resetStats, deleteEverything,

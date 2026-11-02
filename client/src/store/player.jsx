@@ -2,7 +2,7 @@
 // playback speed and the sleep timer.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AudioEngine } from '../audio/engine.js';
-import { leadSeconds, overlapTarget, transitionStep } from '../audio/transition.js';
+import { curvesFor, leadSeconds, overlapTarget, transitionStep } from '../audio/transition.js';
 import { useLibrary } from './library.jsx';
 
 const Ctx = createContext(null);
@@ -51,6 +51,9 @@ export function PlayerProvider({ children }) {
   const [rate, setRateState] = useState(() => clamp(Number(localStorage.getItem('rune.rate')) || 1, 0.5, 2));
   const [xfade, setXfadeState] = useState(() => clamp(Number(localStorage.getItem('rune.xfade')) || 0, 0, 12));
   const [gapless, setGaplessState] = useState(() => localStorage.getItem('rune.gapless') !== '0');
+  const [xfadeAdv, setXfadeAdvState] = useState(() => { try { return JSON.parse(localStorage.getItem('rune.xfadeAdv')) || { shape: 'equal' }; } catch { return { shape: 'equal' }; } });
+  const xfadeAdvRef = useRef(xfadeAdv);
+  xfadeAdvRef.current = xfadeAdv;
   const [sleep, setSleepState] = useState({ mode: 'off' });          // off | timer (endsAt) | song (after the current song)
   const volumeRef = useRef(volume), rateRef = useRef(rate), xfadeRef = useRef(xfade), gaplessRef = useRef(gapless), sleepRef = useRef(sleep);
   volumeRef.current = volume; rateRef.current = rate; xfadeRef.current = xfade; gaplessRef.current = gapless; sleepRef.current = sleep;
@@ -218,7 +221,7 @@ export function PlayerProvider({ children }) {
     prep.current = null;
     busyUntil.current = Date.now() + fade * 1000 + 500;
     act.current = to;
-    engine.crossfade(from, to, fade);
+    engine.crossfade(from, to, fade, seconds > 0 ? curvesFor(xfadeAdvRef.current) : undefined);
     inEl.currentTime = 0;
     inEl.play().catch(() => {});
     commit({ queue, index: idx, label });
@@ -395,7 +398,8 @@ export function PlayerProvider({ children }) {
     els.forEach((e) => { e.defaultPlaybackRate = v; e.playbackRate = v; });
     try { localStorage.setItem('rune.rate', String(v)); } catch { /* storage blocked */ }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const setXfade = useCallback((s) => { const v = clamp(Math.round(s), 0, 12); setXfadeState(v); try { localStorage.setItem('rune.xfade', String(v)); } catch { /* ignore */ } }, []);
+  const setXfadeAdv = useCallback((adv) => { setXfadeAdvState(adv); xfadeAdvRef.current = adv; try { localStorage.setItem('rune.xfadeAdv', JSON.stringify(adv)); } catch { /* ignore */ } }, []);
+  const setXfade = useCallback((s) => { const v = clamp(Math.round(s * 10) / 10, 0, 12); setXfadeState(v); try { localStorage.setItem('rune.xfade', String(v)); } catch { /* ignore */ } }, []);
   const setGapless = useCallback((on) => { setGaplessState(on); try { localStorage.setItem('rune.gapless', on ? '1' : '0'); } catch { /* ignore */ } }, []);
 
   // ---- listening stats: one tick per second of actual playback ----
@@ -448,8 +452,8 @@ export function PlayerProvider({ children }) {
     engine, current, queue, index: st.index, label: st.label, playing, loading, time, duration, volume, muted, shuffle, repeat,
     media: els[0], registerSurface, toggle, pause: pauseAll, next, prev, seek, setVolume, toggleMute: () => setMuted((m) => !m), toggleShuffle, cycleRepeat,
     playQueue, playIndex, addToQueue, playNext, removeFromQueue, moveInQueue, clearQueue, shuffleAll,
-    rate, setRate, xfade, setXfade, gapless, setGapless, sleep, setSleep,
-  }), [engine, current, queue, st, playing, loading, time, duration, volume, muted, shuffle, repeat, rate, xfade, gapless, sleep]); // eslint-disable-line react-hooks/exhaustive-deps
+    rate, setRate, xfade, setXfade, xfadeAdv, setXfadeAdv, gapless, setGapless, sleep, setSleep,
+  }), [engine, current, queue, st, playing, loading, time, duration, volume, muted, shuffle, repeat, rate, xfade, xfadeAdv, gapless, sleep]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

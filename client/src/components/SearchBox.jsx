@@ -3,17 +3,20 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLibrary } from '../store/library.jsx';
 import { usePlayer } from '../store/player.jsx';
-import { Cover, Icon, IconButton, artistHref } from './ui.jsx';
+import { AddToPlaylist, Cover, Icon, IconButton, artistHref } from './ui.jsx';
 
 export const matches = (t, q) => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(q);
 
 function SongRow({ t, onPlay, onForget }) {
+  const { addToQueue } = usePlayer();
   return (
     <div className="dd-row">
       <button className={`dd-main ${t.missing ? 'missing' : ''}`} onClick={onPlay}>
         <Cover src={t.cover} seed={t.albumKey || t.id} label={t.title} className="thumb" />
         <span className="t-text"><span className="t-title">{t.title}</span><span className="t-artist">{t.artist}</span></span>
       </button>
+      {!t.missing && <IconButton icon="queue" size={18} label={`Add ${t.title} to queue`} onClick={(e) => { e.stopPropagation(); addToQueue(t); }} />}
+      <AddToPlaylist track={t} size={18} floating />
       {onForget && <IconButton icon="close" size={14} label={`Remove ${t.title} from recent`} onClick={onForget} />}
     </div>
   );
@@ -29,7 +32,7 @@ export default function SearchBox({ route }) {
   useEffect(() => { if (route.name === 'search') setValue(route.arg); }, [route]);
   useEffect(() => {
     if (!open) return undefined;
-    const close = (e) => { if (!box.current?.contains(e.target)) setOpen(false); };
+    const close = (e) => { if (!box.current?.contains(e.target) && !e.target.closest?.('.menu.floating')) setOpen(false); };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [open]);

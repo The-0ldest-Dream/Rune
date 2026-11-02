@@ -88,3 +88,17 @@ test('same artist written two ways makes ONE artist; co-artists get the song too
   assert.equal(mk(7, 'Bleachers, Lana Del Rey', 'Singles', 1, 'Bleachers').albumKey, 'bleachers|singles'); // album-artist tag wins when it names a credited artist
   assert.equal(mk(8, 'Band', 'X', 1, 'Various Artists').albumKey, 'band|x');             // unrelated album-artist is ignored
 });
+
+import { pickPalette, paletteColors } from '../src/util.js';
+test('palette picks distinct prominent colours and always returns n', () => {
+  const px = (r, g, b, n) => Array.from({ length: n }, () => [r, g, b, 255]).flat();
+  const img = Uint8ClampedArray.from([...px(30, 60, 200, 400), ...px(230, 200, 40, 300), ...px(40, 180, 90, 200), ...px(255, 255, 255, 100), ...px(35, 62, 198, 50)]);
+  const p = pickPalette(img, 4);
+  const near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 30;
+  assert.ok(p.some((c) => near(c, [30, 60, 200])) && p.some((c) => near(c, [230, 200, 40])) && p.some((c) => near(c, [40, 180, 90])));
+  assert.equal(p.length >= 3, true);
+  assert.equal(pickPalette(Uint8ClampedArray.from(px(30, 60, 200, 50)), 4).length, 1);                // one-colour cover
+  const filled = paletteColors(pickPalette(Uint8ClampedArray.from(px(30, 60, 200, 50)), 4), 4);
+  assert.equal(filled.length, 4); assert.ok(filled.every((c) => /^hsl\(/.test(c)));
+  assert.equal(paletteColors([], 4).length, 4);
+});

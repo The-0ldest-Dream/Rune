@@ -4,7 +4,9 @@ import { usePlayer } from '../store/player.jsx';
 import { useLibrary } from '../store/library.jsx';
 import { EQ_LABELS, PRESETS } from '../audio/engine.js';
 import { chainDb, logFreqs } from '../audio/eqMath.js';
-import { activeLine, hasLyrics, parseLrc } from '../lyrics.js';
+import { activeLine, hasLyrics, lineProgress, parseLrc } from '../lyrics.js';
+import { BeatGlow, useBeat } from './BeatGlow.jsx';
+import TransitionEditor from './TransitionEditor.jsx';
 import Visualizer from './Visualizer.jsx';
 import { ArtistLinks, Cover, Icon, IconButton, LikeButton, albumHref, fmtTime } from './ui.jsx';
 
@@ -19,6 +21,9 @@ export function VideoSurface({ className = '' }) {
 export function NowPlaying() {
   const { current } = usePlayer();
   const lib = useLibrary();
+  const [expanded, setExpanded] = useState(false);
+  const root = useRef(null);
+  useBeat(root, expanded ? 0 : 1);        // restarts when the cover comes back after "Show less"
   if (!current) {
     return (
       <div className="panel-empty">
@@ -27,17 +32,34 @@ export function NowPlaying() {
       </div>
     );
   }
+  const isVideo = current.kind === 'video';
+  if (expanded && !isVideo) {
+    // "Show more": the cover gives way to the lyrics
+    return (
+      <div className="np-expanded">
+        <div className="np-mini">
+          <Cover src={current.cover} seed={current.albumKey || current.id} label={current.title} className="thumb lg" />
+          <span className="t-text"><span className="t-title">{current.title}</span><span className="t-artist">{current.artist}</span></span>
+          <LikeButton track={current} />
+        </div>
+        <LyricsCard expanded onToggle={() => setExpanded(false)} />
+      </div>
+    );
+  }
   return (
-    <div className="nowplaying">
-      {current.kind === 'video'
-        ? <VideoSurface className="np-video" />
-        : <Cover src={current.cover} seed={current.albumKey || current.id} label={current.title} className="big" />}
+    <div className="nowplaying" ref={root}>
+      <div className="np-cover">
+        <BeatGlow />
+        {isVideo
+          ? <VideoSurface className="np-video" />
+          : <Cover src={current.cover} seed={current.albumKey || current.id} label={current.title} className="big" />}
+      </div>
       <div className="np-title"><h2>{current.title}</h2><LikeButton track={current} size={24} /></div>
       <p className="muted">
         <ArtistLinks track={current} />
         {current.album ? <> · {lib.albumByKey.has(current.albumKey) ? <a href={albumHref(current.albumKey)}>{current.album}</a> : current.album}</> : null}
       </p>
-      <Visualizer />
+      {isVideo ? <Visualizer /> : <LyricsCard onToggle={() => setExpanded(true)} />}
     </div>
   );
 }
@@ -124,50 +146,97 @@ function useLyrics(track) {
 
 const SOURCES = { file: 'embedded in the song file', lrc: 'from a .lrc file', online: 'LRCLIB (online)' };
 
-/** Lyrics for the current song; synced lyrics follow the music and can be clicked to seek. */
-export function LyricsPanel({ large = false }) {
+/**
+ * Lyrics lines + states (loading / ask / none / error). `variant`: 'panel' (side panel), 'card' (small card in Now playing),
+ * 'fs' (big, full-screen Verse / Duet look).
+ */
+function LyricsBody({ lyr, variant = 'panel' }) {
   const { current, time, seek } = usePlayer();
   const lib = useLibrary();
-  const { state, retry } = useLyrics(current);
+  const { state, retry } = lyr;
   const [dismissed, setDismissed] = useState(false);
   const box = useRef(null);
   const manual = useRef(0);                         // timestamp of the last manual scroll
   const parsed = useMemo(() => (state.rec ? parseLrc(state.rec.raw) : null), [state.rec]);
   const active = parsed?.synced ? activeLine(parsed.lines, time + 0.2) : -1;
+  const small = variant === 'card';
 
   useEffect(() => {
     if (!parsed?.synced || active < 0 || !box.current || Date.now() - manual.current < 4000) return;
     const el = box.current.querySelector(`[data-i="${active}"]`);
-    if (el) box.current.scrollTo({ top: el.offsetTop - box.current.clientHeight / 2 + el.clientHeight / 2, behavior: 'smooth' });
-  }, [active, parsed]);
+    if (el) box.current.scrollTo({ top: el.offsetTop - box.current.clientHeight * (variant === 'fs' ? 0.38 : 0.45) + el.clientHeight / 2, behavior: 'smooth' });
+  }, [active, parsed, variant]);
 
-  const msg = (icon, text, extra) => <div className="panel-empty"><Icon name={icon} size={36} /><p>{text}</p>{extra}</div>;
-  if (!current) return msg('mic', 'Play a song to see its lyrics.');
+  const msg = (icon, text, extra) => (
+    <div className={`panel-empty ${small ? 'small' : ''}`}>{!small && <Icon name={icon} size={36} />}<p>{text}</p>{extra}</div>
+  );
+  if (!current) return msg('lyrics', 'Play a song to see its lyrics.');
   if (state.status === 'video') return msg('video', 'Lyrics aren’t available for videos.');
   if (state.status === 'loading' || state.status === 'idle') return <div className="status" role="status"><span className="spinner" /> Looking for lyrics…</div>;
   if (state.status === 'ask' && !dismissed) {
-    return msg('mic', 'No lyrics are stored for this song. Rune can look them up online automatically, once per song, using the free LRCLIB database.', (
+    return msg('lyrics', 'No lyrics are stored for this song. Rune can look them up online, once per song, in the free LRCLIB database.', (
       <>
         <p className="muted small">This sends the song’s title, artist, album and length to lrclib.net. You can switch it off any time in Profile.</p>
         <div className="row center"><button className="btn" onClick={() => lib.setLyricsOnline(true)}>Find lyrics online</button><button className="btn ghost" onClick={() => setDismissed(true)}>Not now</button></div>
       </>
     ));
   }
-  if (state.status === 'error') return msg('mic', 'Couldn’t reach the lyrics service. Check your connection.', <button className="btn" onClick={retry}>Try again</button>);
+  if (state.status === 'error') return msg('lyrics', 'Couldn’t reach the lyrics service. Check your connection.', <button className="btn" onClick={retry}>Try again</button>);
   if (state.status !== 'ready') {
-    return msg('mic', 'No lyrics found for this song.', lib.lyricsOnline === '1'
+    return msg('lyrics', 'No lyrics found for this song.', lib.lyricsOnline === '1'
       ? <button className="btn ghost" onClick={retry}>Search again</button>
       : <p className="muted small">Turn on online lyrics in Profile, or put a .lrc file with the same name next to the song.</p>);
   }
   return (
-    <div className={`lyrics ${large ? 'large' : ''} ${parsed.synced ? 'synced' : 'plain'}`} ref={box}
+    <div className={`lyrics ${variant} ${parsed.synced ? 'synced' : 'plain'}`} ref={box}
       onWheel={() => { manual.current = Date.now(); }} onTouchMove={() => { manual.current = Date.now(); }}>
-      {parsed.lines.map((l, i) => (
-        <p key={i} data-i={i} className={`ly-line ${i === active ? 'active' : ''} ${!l.text ? 'gap' : ''}`}
-          onClick={parsed.synced ? () => { manual.current = 0; seek(l.t); } : undefined}>{l.text || '\u00a0'}</p>
-      ))}
+      {parsed.lines.map((l, i) => {
+        const on = i === active;
+        const style = parsed.synced && active >= 0 ? { '--d': Math.abs(i - active), ...(on ? { '--p': lineProgress(parsed.lines, i, time).toFixed(3) } : null) } : undefined;
+        return (
+          <p key={i} data-i={i} style={style} className={`ly-line ${on ? 'active' : ''} ${!l.text ? 'gap' : ''}`}
+            onClick={parsed.synced ? () => { manual.current = 0; seek(l.t); } : undefined}>
+            <span className="ly-text">{l.text || '\u00a0'}</span>
+          </p>
+        );
+      })}
       <p className="ly-source">Lyrics {SOURCES[state.rec.source] || ''}{parsed.synced ? ' · synced' : ''}</p>
     </div>
+  );
+}
+
+/** Lyrics for the current song (side panel or the full-screen Verse / Duet themes). */
+export function LyricsPanel({ variant = 'panel' }) {
+  const { current } = usePlayer();
+  const lyr = useLyrics(current);
+  return <LyricsBody lyr={lyr} variant={variant} />;
+}
+
+/** The coloured card in Now playing: a few lines of lyrics (or the visualizer), with Show more / Show less. */
+function LyricsCard({ expanded = false, onToggle }) {
+  const { current } = usePlayer();
+  const lib = useLibrary();
+  const lyr = useLyrics(current);
+  const [mode, setMode] = useState(() => localStorage.getItem('rune.npMode') || 'lyrics');
+  const status = lyr.state.status;
+  const showViz = mode === 'viz' || status === 'none';        // no lyrics → show the visualizer instead of an empty card
+  const flip = () => { const n = mode === 'viz' ? 'lyrics' : 'viz'; setMode(n); try { localStorage.setItem('rune.npMode', n); } catch { /* ignore */ } };
+  return (
+    <section className={`lyrics-card ${expanded ? 'expanded' : ''}`}>
+      <header>
+        <strong>{showViz ? (mode === 'lyrics' && status === 'none' ? 'No lyrics for this song' : 'Visualizer') : 'Lyrics'}</strong>
+        <span>
+          <IconButton icon="wave" size={18} label={mode === 'viz' ? 'Show lyrics' : 'Show visualizer'} active={mode === 'viz'} onClick={flip} />
+          <IconButton icon={expanded ? 'collapseArrow' : 'expandArrow'} size={18} label={expanded ? 'Show less' : 'Show more'} onClick={onToggle} />
+        </span>
+      </header>
+      <div className="lc-body">
+        {showViz
+          ? <><Visualizer height={expanded ? 220 : 110} bars={32} />{mode === 'lyrics' && status === 'none' && lib.lyricsOnline !== '1' && <p className="lc-note">Turn on online lyrics in Profile, or add a .lrc file.</p>}</>
+          : <LyricsBody lyr={lyr} variant="card" />}
+      </div>
+      {!showViz && status === 'ready' && <button className="btn show-more" onClick={onToggle}>{expanded ? 'Show less' : 'Show more'}</button>}
+    </section>
   );
 }
 
@@ -180,6 +249,7 @@ export function PlaybackPanel() {
   const { rate, setRate, xfade, setXfade, gapless, setGapless, sleep, setSleep } = usePlayer();
   const [now, setNow] = useState(Date.now());
   const [custom, setCustom] = useState('');
+  const [editor, setEditor] = useState(false);
   useEffect(() => {
     if (sleep.mode !== 'timer') return undefined;
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -212,15 +282,16 @@ export function PlaybackPanel() {
       </section>
 
       <section>
-        <h3>Transitions <span className="muted">· {xfade ? `${xfade} s crossfade` : 'no crossfade'}</span></h3>
+        <h3 className="h-row">Crossfade <span className="muted">· {xfade ? `${xfade} s` : 'off'}</span><button className="link-btn adv" onClick={() => setEditor(true)}>Advanced</button></h3>
         <input type="range" min="0" max="12" step="1" value={xfade} aria-label="Crossfade seconds" onChange={(e) => setXfade(Number(e.target.value))}
           style={{ '--p': `${(xfade / 12) * 100}%` }} />
         <label className="switch small">
           <input type="checkbox" checked={gapless} onChange={(e) => setGapless(e.target.checked)} />
           <span>Gapless playback (no pause between songs)</span>
         </label>
-        <p className="muted small">Crossfade blends the end of a song into the next one. Music videos never overlap.</p>
+        <p className="muted small">Crossfade blends the end of a song into the next one. Music videos never overlap. “Advanced” lets you shape the fade and hear it.</p>
       </section>
+      {editor && <TransitionEditor onClose={() => setEditor(false)} />}
     </div>
   );
 }

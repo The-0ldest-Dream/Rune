@@ -1,5 +1,6 @@
 // Shared presentational pieces: icons, cover art, status messages, track list and the per-track menu.
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { usePlayer } from '../store/player.jsx';
 import { useLibrary } from '../store/library.jsx';
 import { hashStr } from '../util.js';
@@ -33,6 +34,9 @@ const PATHS = {
   expandArrow: 'M21 11V3h-8l3.29 3.29-10 10L3 13v8h8l-3.29-3.29 10-10z',
   collapseArrow: 'M22 3.41L16.71 8.7 20 12h-8V4l3.29 3.29L20.59 2 22 3.41zM3.41 22l5.29-5.29L12 20v-8H4l3.29 3.29L2 20.59 3.41 22z',
   timer: 'M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0012 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z',
+  lyrics: 'M4 4h16v12H5.17L4 17.17V4m0-2c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2H4zm2 10h12v2H6v-2zm0-3h12v2H6V9zm0-3h12v2H6V6z',
+  duet: 'M3 5h8v8H3V5zm10 1h8v2h-8V6zm0 4h8v2h-8v-2zm-10 5h18v2H3v-2zm0 4h13v2H3v-2z',
+  wave: 'M3 9h2v6H3zM7 4h2v16H7zM11 8h2v8h-2zM15 2h2v20h-2zM19 9h2v6h-2z',
   mic: 'M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z',
   folder: 'M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',
   heart: 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z',
@@ -108,6 +112,14 @@ export function ArtistLinks({ track, stopClicks = false }) {
   });
 }
 
+/** Names the clicked card's cover so the browser can morph it into the page's big cover (View Transitions). */
+const markHero = (e) => {
+  const cover = e.currentTarget.querySelector('.cover');
+  if (!cover) return;
+  cover.style.viewTransitionName = 'hero';
+  setTimeout(() => { cover.style.viewTransitionName = ''; }, 900);
+};
+
 export const albumHref = (key) => `#/album/${encodeURIComponent(key)}`;
 export const artistHref = (key) => `#/artist/${encodeURIComponent(key)}`;
 
@@ -173,15 +185,18 @@ export function LikeButton({ track, size = 20 }) {
   );
 }
 
-/** "+" button: add the song to (or remove it from) a playlist. `up` opens the menu above the button. */
-export function AddToPlaylist({ track, up = false, size = 20 }) {
+/** "+" button: add the song to (or remove it from) a playlist. `up` opens the menu above the button; `floating` draws it
+ *  on top of everything (needed inside scrolling containers such as the search dropdown). */
+export function AddToPlaylist({ track, up = false, size = 20, floating = false }) {
   const lib = useLibrary();
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
   const ref = useRef(null);
+  const menuRef = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
-    const close = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const close = (e) => { if (!ref.current?.contains(e.target) && !menuRef.current?.contains(e.target)) setOpen(false); };
     const esc = (e) => e.key === 'Escape' && setOpen(false);
     document.addEventListener('mousedown', close);
     document.addEventListener('keydown', esc);
@@ -195,18 +210,26 @@ export function AddToPlaylist({ track, up = false, size = 20 }) {
     lib.toast(has ? `Removed from “${p.name}”.` : `Added to “${p.name}”.`);
     setOpen(false);
   };
+  const openMenu = (e) => {
+    if (floating) {
+      const r = e.currentTarget.getBoundingClientRect(), below = window.innerHeight - r.bottom;
+      setPos(below > 280 ? { right: window.innerWidth - r.right, top: r.bottom + 6 } : { right: window.innerWidth - r.right, bottom: window.innerHeight - r.top + 6 });
+    }
+    setOpen(!open);
+  };
+  const menu = (
+    <div ref={menuRef} className={`menu ${up ? 'up' : ''} ${floating ? 'floating' : ''}`} style={floating ? pos || undefined : undefined} role="menu">
+      <div className="menu-title">Add to playlist</div>
+      <button role="menuitem" onClick={() => { const p = lib.createPlaylist(`Playlist ${lib.playlists.filter((x) => !x.system).length + 1}`, [track.id]); lib.toast(`Created “${p.name}”.`); setOpen(false); }}>+ New playlist</button>
+      {lib.playlists.map((p) => (
+        <button key={p.id} role="menuitem" onClick={() => toggle(p)}>{p.name}{p.trackIds.includes(track.id) ? ' ✓' : ''}</button>
+      ))}
+    </div>
+  );
   return (
     <div className="menu-wrap" ref={ref} onClick={(e) => e.stopPropagation()}>
-      <IconButton icon={inAny ? 'check' : 'plus'} size={size} active={inAny} label={inAny ? 'In a playlist – manage playlists' : 'Add to playlist'} onClick={() => setOpen(!open)} aria-expanded={open} />
-      {open && (
-        <div className={`menu ${up ? 'up' : ''}`} role="menu">
-          <div className="menu-title">Add to playlist</div>
-          <button role="menuitem" onClick={() => { const p = lib.createPlaylist(`Playlist ${lib.playlists.filter((x) => !x.system).length + 1}`, [track.id]); lib.toast(`Created “${p.name}”.`); setOpen(false); }}>+ New playlist</button>
-          {lib.playlists.map((p) => (
-            <button key={p.id} role="menuitem" onClick={() => toggle(p)}>{p.name}{p.trackIds.includes(track.id) ? ' ✓' : ''}</button>
-          ))}
-        </div>
-      )}
+      <IconButton icon={inAny ? 'check' : 'plus'} size={size} active={inAny} label={inAny ? 'In a playlist – manage playlists' : 'Add to playlist'} onClick={openMenu} aria-expanded={open} />
+      {open && (floating ? createPortal(menu, document.body) : menu)}
     </div>
   );
 }
@@ -264,7 +287,7 @@ const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 export function AlbumCard({ album }) {
   return (
-    <a className="card" href={albumHref(album.key)}>
+    <a className="card" href={albumHref(album.key)} onClick={markHero}>
       <Cover src={album.cover} seed={album.key} label={album.title} />
       <strong>{album.title}</strong>
       <span className="muted">{album.artist} · {count(album.tracks.length, 'song', 'songs')}</span>
@@ -274,7 +297,7 @@ export function AlbumCard({ album }) {
 
 export function ArtistCard({ artist }) {
   return (
-    <a className="card" href={artistHref(artist.key)}>
+    <a className="card" href={artistHref(artist.key)} onClick={markHero}>
       <Cover round src={artist.cover} seed={artist.key} label={artist.name} />
       <strong>{artist.name}</strong>
       <span className="muted">{artist.albums.length ? `${count(artist.albums.length, 'album', 'albums')} · ` : ''}{count(artist.tracks.length, 'song', 'songs')}</span>
@@ -284,7 +307,7 @@ export function ArtistCard({ artist }) {
 
 export function PlaylistTile({ playlist }) {
   return (
-    <a className="tile" href={`#/playlist/${playlist.id}`}>
+    <a className="tile" href={`#/playlist/${playlist.id}`} onClick={markHero}>
       <Cover src={playlist.cover} seed={playlist.id} label={playlist.name} className="thumb xl" />
       <span className="tile-name">{playlist.name}</span>
     </a>

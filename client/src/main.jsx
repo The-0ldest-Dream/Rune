@@ -3,8 +3,10 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import './styles.css';
 import { applyStoredTheme } from './themes.js';
+import { applyStoredFx } from './effects.js';
 
 applyStoredTheme();
+applyStoredFx();
 
 createRoot(document.getElementById('root')).render(<App />);
 
