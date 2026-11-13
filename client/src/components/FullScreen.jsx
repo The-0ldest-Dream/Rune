@@ -20,8 +20,8 @@ export default function FullScreen({ onClose, winFull = false, onToggleWindow })
   const { current, label } = usePlayer();
   const [view, setView] = useState(() => { const v = localStorage.getItem(VIEW_KEY); return VIEWS.some((x) => x[0] === v) ? v : 'cover'; });
   const [immersive, setImmersive] = useState(false);
-  const body = useRef(null);
-  useBeat(body);
+  const glowRef = useRef(null), coverRef = useRef(null);
+  useBeat(glowRef, coverRef, view === 'cover' ? 1 : 0);
   const pick = (v) => { setView(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* ignore */ } };
   const aurora = view === 'verse' || view === 'duet';
   // Keep the latest onClose in a ref: the parent re-renders many times a second while music plays, and an effect that
@@ -63,23 +63,23 @@ export default function FullScreen({ onClose, winFull = false, onToggleWindow })
           <IconButton icon="collapseArrow" label="Close expanded view" onClick={onClose} />
         </div>
       </header>
-      <div className="fs-body" ref={body}>
+      <div className="fs-body">
         {!current ? (
           <div className="panel-empty"><Icon name="music" size={48} /><p>Nothing is playing.</p></div>
         ) : view === 'verse' ? (
           <div className="fs-verse"><LyricsPanel variant="fs" /></div>
         ) : view === 'duet' ? (
           <div className="fs-duet">
+            <div className="fs-duet-lyrics"><LyricsPanel variant="fs" /></div>
             <div className="fs-duet-art">
               {art}
               <div className="fs-duet-meta"><strong>{current.title}</strong><span>{current.artist}</span></div>
             </div>
-            <div className="fs-duet-lyrics"><LyricsPanel variant="fs" /></div>
           </div>
         ) : view === 'cover' ? (
           <>
-            <BeatGlow />
-            {art}
+            <BeatGlow glowRef={glowRef} />
+            <div className="fs-cover-wrap" ref={coverRef}>{art}</div>
           </>
         ) : (
           <div className="fs-viz"><Visualizer height={260} bars={56} /><h3>{current.title}</h3><p className="muted">{current.artist}</p></div>

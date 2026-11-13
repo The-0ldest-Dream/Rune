@@ -1,6 +1,6 @@
 // Right-hand panel: Now playing, Queue and Equalizer.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { usePlayer } from '../store/player.jsx';
+import { usePlayer, usePlayerTime } from '../store/player.jsx';
 import { useLibrary } from '../store/library.jsx';
 import { EQ_LABELS, PRESETS } from '../audio/engine.js';
 import { chainDb, logFreqs } from '../audio/eqMath.js';
@@ -22,8 +22,8 @@ export function NowPlaying() {
   const { current } = usePlayer();
   const lib = useLibrary();
   const [expanded, setExpanded] = useState(false);
-  const root = useRef(null);
-  useBeat(root, expanded ? 0 : 1);        // restarts when the cover comes back after "Show less"
+  const glowRef = useRef(null), coverRef = useRef(null);
+  useBeat(glowRef, coverRef, expanded ? 0 : 1);        // restarts when the cover comes back after "Show less"
   if (!current) {
     return (
       <div className="panel-empty">
@@ -47,12 +47,14 @@ export function NowPlaying() {
     );
   }
   return (
-    <div className="nowplaying" ref={root}>
+    <div className="nowplaying">
       <div className="np-cover">
-        <BeatGlow />
-        {isVideo
-          ? <VideoSurface className="np-video" />
-          : <Cover src={current.cover} seed={current.albumKey || current.id} label={current.title} className="big" />}
+        <BeatGlow glowRef={glowRef} />
+        <div className="np-cover-inner" ref={coverRef}>
+          {isVideo
+            ? <VideoSurface className="np-video" />
+            : <Cover src={current.cover} seed={current.albumKey || current.id} label={current.title} className="big" />}
+        </div>
       </div>
       <div className="np-title"><h2>{current.title}</h2><LikeButton track={current} size={24} /></div>
       <p className="muted">
@@ -151,7 +153,8 @@ const SOURCES = { file: 'embedded in the song file', lrc: 'from a .lrc file', on
  * 'fs' (big, full-screen Verse / Duet look).
  */
 function LyricsBody({ lyr, variant = 'panel' }) {
-  const { current, time, seek } = usePlayer();
+  const { current, seek } = usePlayer();
+  const { time } = usePlayerTime();
   const lib = useLibrary();
   const { state, retry } = lyr;
   const [dismissed, setDismissed] = useState(false);
@@ -188,13 +191,14 @@ function LyricsBody({ lyr, variant = 'panel' }) {
       : <p className="muted small">Turn on online lyrics in Profile, or put a .lrc file with the same name next to the song.</p>);
   }
   return (
-    <div className={`lyrics ${variant} ${parsed.synced ? 'synced' : 'plain'}`} ref={box}
+    <div className={`lyrics v-${variant} ${parsed.synced ? 'synced' : 'plain'}`} ref={box}
       onWheel={() => { manual.current = Date.now(); }} onTouchMove={() => { manual.current = Date.now(); }}>
       {parsed.lines.map((l, i) => {
         const on = i === active;
-        const style = parsed.synced && active >= 0 ? { '--d': Math.abs(i - active), ...(on ? { '--p': lineProgress(parsed.lines, i, time).toFixed(3) } : null) } : undefined;
+        const dist = Math.abs(i - active);
+        const style = parsed.synced && active >= 0 ? { '--d': dist, ...(on ? { '--sweep': lineProgress(parsed.lines, i, time).toFixed(3) } : null) } : undefined;
         return (
-          <p key={i} data-i={i} style={style} className={`ly-line ${on ? 'active' : ''} ${!l.text ? 'gap' : ''}`}
+          <p key={i} data-i={i} data-d={style ? Math.min(4, dist) : undefined} style={style} className={`ly-line ${on ? 'active' : ''} ${!l.text ? 'gap' : ''}`}
             onClick={parsed.synced ? () => { manual.current = 0; seek(l.t); } : undefined}>
             <span className="ly-text">{l.text || '\u00a0'}</span>
           </p>

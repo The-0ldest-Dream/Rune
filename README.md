@@ -49,11 +49,11 @@ If a link says "not found", the latest build is still being prepared — try aga
 - ❤️ **Liked Songs** — tap the heart next to the song name to save it to the built-in *Liked Songs* playlist.
 - 📋 **Playlists and queue** — create playlists, add songs with the **+** button, reorder the queue by dragging.
 - 🔍 **Fast search** — songs, artists, playlists and videos. The search bar shows the songs you recently played from search. Works with no internet.
-- 🖥️ **Expanded & full-screen player** — the arrow in any player panel (Now playing, Queue, Equalizer, Playback) expands *that* panel to full screen inside the app; the full-screen button in the player bar also fills the whole screen. The backdrop is coloured from the artwork; after 5 quiet seconds it becomes a clean, immersive view.
+- 🖥️ **Expanded & full-screen player** — the arrow in any player panel (Now playing, Queue, Equalizer, Playback) expands *that* panel to full screen inside the app; while something is full screen, tapping Queue, Equalizer, Playback or the song's cover in the player bar switches the full-screen view to it; the full-screen button in the player bar also fills the whole screen. The backdrop is coloured from the artwork; after 5 quiet seconds it becomes a clean, immersive view.
 - 📊 **Your stats** — see your top 10 most-listened songs on your profile; Home shows your top playlists, albums and most-played songs.
 - 📋 **Playlist files** — import `.m3u` / `.m3u8` / `.pls` playlists and export yours as M3U.
 - 📈 **Recap** — a last-7-days and this-year listening recap on your profile: time listened, plays, best day, top songs and artists.
-- 🔀 **Quick command** — type or tap *Shuffle all* in the search bar. Every song in the search results has buttons to add it to the queue or to a playlist.
+- 🔀 **Shuffle all** — a shuffle button sits to the left of the search bar (and as a quick command inside it). Every song in the search results has buttons to add it to the queue or to a playlist.
 - 💾 **Backup & sync between devices** — export your data (everything except the song files) and import it on another device.
 
 ## Getting started in one minute

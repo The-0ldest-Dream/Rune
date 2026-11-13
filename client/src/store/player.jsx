@@ -7,6 +7,10 @@ import { useLibrary } from './library.jsx';
 
 const Ctx = createContext(null);
 export const usePlayer = () => useContext(Ctx);
+// Playback position changes several times a second; keeping it out of the main context stops every song row, panel and
+// button from re-rendering on each tick. Only components that really show the time subscribe to this one.
+const TimeCtx = createContext({ time: 0, duration: 0 });
+export const usePlayerTime = () => useContext(TimeCtx);
 
 let qidCounter = 0;
 const withQid = (t) => ({ ...t, qid: `q${++qidCounter}` });
@@ -449,11 +453,12 @@ export function PlayerProvider({ children }) {
   }, [playing, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value = useMemo(() => ({
-    engine, current, queue, index: st.index, label: st.label, playing, loading, time, duration, volume, muted, shuffle, repeat,
+    engine, current, queue, index: st.index, label: st.label, playing, loading, volume, muted, shuffle, repeat,
     media: els[0], registerSurface, toggle, pause: pauseAll, next, prev, seek, setVolume, toggleMute: () => setMuted((m) => !m), toggleShuffle, cycleRepeat,
     playQueue, playIndex, addToQueue, playNext, removeFromQueue, moveInQueue, clearQueue, shuffleAll,
     rate, setRate, xfade, setXfade, xfadeAdv, setXfadeAdv, gapless, setGapless, sleep, setSleep,
-  }), [engine, current, queue, st, playing, loading, time, duration, volume, muted, shuffle, repeat, rate, xfade, xfadeAdv, gapless, sleep]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [engine, current, queue, st, playing, loading, volume, muted, shuffle, repeat, rate, xfade, xfadeAdv, gapless, sleep]);
+  const timeValue = useMemo(() => ({ time, duration }), [time, duration]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={value}><TimeCtx.Provider value={timeValue}>{children}</TimeCtx.Provider></Ctx.Provider>;
 }

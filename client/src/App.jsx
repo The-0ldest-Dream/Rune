@@ -95,8 +95,11 @@ function Sidebar({ route, onNavigate, compact }) {
 
 function TopBar({ route }) {
   const lib = useLibrary();
+  const { shuffleAll } = usePlayer();
+  const playable = lib.tracks.filter((t) => !t.missing);
   return (
     <header className="topbar">
+      <IconButton icon="shuffle" size={20} className="topbar-shuffle" label="Shuffle all songs" disabled={!playable.length} onClick={() => shuffleAll(playable, 'Shuffle all')} />
       <SearchBox route={route} />
       <a className="profile-link" href="#/profile" aria-label="Profile" title={lib.profile.name || 'Profile'}>
         <Avatar url={lib.avatarUrl} name={lib.profile.name} size={40} />
@@ -270,7 +273,7 @@ function Shell() {
   return (
     <div ref={appRef}
       style={{ '--c1': bd.c1, '--c2': bd.c2, '--p1': bd.p[0], '--p2': bd.p[1], '--p3': bd.p[2], '--p4': bd.p[3], '--side-w': `${layout.side}px`, '--panel-w': `${layout.panel}px` }}
-      className={`app ${panel.open ? 'with-panel' : ''} ${current ? '' : 'no-bar'} ${tint ? 'np-tint' : ''} ${dragging ? 'resizing' : ''}`}>
+      className={`app ${panel.open ? 'with-panel' : ''} ${current ? '' : 'no-bar'} ${tint ? 'np-tint' : ''} ${full ? 'has-fs' : ''} ${dragging ? 'resizing' : ''}`}>
       <Sidebar route={route} onNavigate={minimise} compact={compact && wide} />
       <main className="main">
         <TopBar route={route} />
@@ -303,7 +306,7 @@ function Shell() {
       )}
       {fullSection === 'now' && <FullScreen onClose={closeFull} winFull={winFull} onToggleWindow={toggleWindowFullscreen} />}
       {full && fullSection !== 'now' && <FullPanel section={fullSection} onClose={closeFull} winFull={winFull} onToggleWindow={toggleWindowFullscreen} />}
-      <PlayerBar panel={panel} setPanel={setPanel} full={full} onFull={toggleBarFullscreen} />
+      <PlayerBar panel={panel} setPanel={setPanel} full={full} onFull={toggleBarFullscreen} fullSection={fullSection} onSection={setFullSection} />
       <Toast />
       <EditDialog />
     </div>
