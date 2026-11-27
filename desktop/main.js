@@ -46,7 +46,13 @@ function createWindow() {
   win.loadURL('app://rune/index.html');
   win.webContents.on('did-finish-load', updateThumbar);
   const external = (url) => { if (/^https?:/.test(url)) shell.openExternal(url); };
-  win.webContents.setWindowOpenHandler(({ url }) => { external(url); return { action: 'deny' }; });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url === 'about:blank' || url === '') {   // the mini player
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 320, height: 450, alwaysOnTop: true, autoHideMenuBar: true, backgroundColor: '#000000', title: 'Rune' } };
+    }
+    external(url);
+    return { action: 'deny' };
+  });
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('app://')) { e.preventDefault(); external(url); } });
   win.on('closed', () => { win = null; });
 }

@@ -35,7 +35,7 @@ If a link says "not found", the latest build is still being prepared — try aga
 ## What you can do
 
 - 🎵 **Play your own music** — MP3, FLAC, OGG, Opus, M4A, WAV and more. Drag files in or pick a whole folder.
-- 🔤 **Always tidy** — your songs are listed A → Z by name.
+- 🔤 **Always tidy** — your songs are listed A → Z by name, and each song appears once: the same title and artist in two linked folders is kept as one (remixes stay separate).
 - 🖼️ **Automatic covers, artists and albums** — cover art, title, artist and album are read from your files. Two or more songs by the same artist create an artist page; two or more from the same album create an album. Tags like “Radiohead, Radiohead” count as one artist, and a song with several artists (“Lana Del Rey, Bleachers”) is listed under each of them.
 - 📁 **Auto-add from a folder** — on Chrome/Edge (computer) link your music folder once; new songs and `.lrc` lyrics files are added automatically.
 - ✏️ **Fix and personalise** — edit song info (one song or many at once) and set your own cover for any song, album, artist, playlist or your profile photo, with crop and zoom.
@@ -51,6 +51,10 @@ If a link says "not found", the latest build is still being prepared — try aga
 - 🔍 **Fast search** — songs, artists, playlists and videos. The search bar shows the songs you recently played from search. Works with no internet.
 - 🖥️ **Expanded & full-screen player** — the arrow in any player panel (Now playing, Queue, Equalizer, Playback) expands *that* panel to full screen inside the app; while something is full screen, tapping Queue, Equalizer, Playback or the song's cover in the player bar switches the full-screen view to it; the full-screen button in the player bar also fills the whole screen. The backdrop is coloured from the artwork; after 5 quiet seconds it becomes a clean, immersive view.
 - 📊 **Your stats** — see your top 10 most-listened songs on your profile; Home shows your top playlists, albums and most-played songs.
+- 🖼️ **Find covers online** — select songs in *Device files* and Rune looks up their cover art (iTunes catalogue, then MusicBrainz / Cover Art Archive).
+- 🎧 **Import from Spotify** — bring playlists over from Spotify's “Download your data” file or an Exportify CSV: song names are kept, songs you own are linked, the rest appear faded until you add the files.
+- 🪟 **Mini player window** — a small always-on-top window (cover, previous, play/pause, next, like) from the button in the player bar.
+- ➕ **Playlist building** — a **+** next to *Playlists* in the sidebar creates one, and *Add songs* inside a playlist lets you pick from your library.
 - 📋 **Playlist files** — import `.m3u` / `.m3u8` / `.pls` playlists and export yours as M3U.
 - 📈 **Recap** — a last-7-days and this-year listening recap on your profile: time listened, plays, best day, top songs and artists.
 - 🔀 **Shuffle all** — a shuffle button sits to the left of the search bar (and as a quick command inside it). Every song in the search results has buttons to add it to the queue or to a playlist.

@@ -4,7 +4,7 @@ import { AddToPlaylist, Cover, Icon, IconButton, LikeButton, fmtTime } from './u
 
 const pct = (v, max) => `${max ? Math.min(100, (v / max) * 100) : 0}%`;
 
-export default function PlayerBar({ panel, setPanel, onFull, full, fullSection = null, onSection }) {
+export default function PlayerBar({ panel, setPanel, onFull, full, fullSection = null, onSection, onMini, miniOpen = false }) {
   const p = usePlayer();
   const { time, duration } = usePlayerTime();
   const { current } = p;
@@ -53,6 +53,7 @@ export default function PlayerBar({ panel, setPanel, onFull, full, fullSection =
       </div>
 
       <div className="pb-right">
+        {onMini && <IconButton icon="pip" label="Mini player window" active={miniOpen} onClick={onMini} />}
         <IconButton icon="timer" label="Playback: speed, sleep timer, crossfade" active={isOn('play') || p.sleep.mode !== 'off' || p.rate !== 1} onClick={() => choose('play')} />
         <IconButton icon="eq" label="Equalizer" active={isOn('eq')} onClick={() => choose('eq')} />
         <IconButton icon="queue" label="Queue" active={isOn('queue')} onClick={() => choose('queue')} />

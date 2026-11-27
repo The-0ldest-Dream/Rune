@@ -165,9 +165,13 @@ function LyricsBody({ lyr, variant = 'panel' }) {
   const small = variant === 'card';
 
   useEffect(() => {
-    if (!parsed?.synced || active < 0 || !box.current || Date.now() - manual.current < 4000) return;
-    const el = box.current.querySelector(`[data-i="${active}"]`);
-    if (el) box.current.scrollTo({ top: el.offsetTop - box.current.clientHeight * (variant === 'fs' ? 0.38 : 0.45) + el.clientHeight / 2, behavior: 'smooth' });
+    const el0 = box.current;
+    if (!parsed?.synced || active < 0 || !el0 || Date.now() - manual.current < 4000) return;
+    const line = el0.querySelector(`[data-i="${active}"]`);
+    if (!line) return;
+    const target = el0.scrollTop + (line.getBoundingClientRect().top - el0.getBoundingClientRect().top)
+      - el0.clientHeight * (variant === 'fs' ? 0.38 : 0.45) + line.clientHeight / 2;
+    el0.scrollTo({ top: target, behavior: Math.abs(target - el0.scrollTop) > el0.clientHeight * 1.5 ? 'auto' : 'smooth' });
   }, [active, parsed, variant]);
 
   const msg = (icon, text, extra) => (

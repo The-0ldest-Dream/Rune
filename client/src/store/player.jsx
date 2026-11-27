@@ -3,6 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AudioEngine } from '../audio/engine.js';
 import { curvesFor, leadSeconds, overlapTarget, transitionStep } from '../audio/transition.js';
+import { queueAdd } from '../queueOps.js';
 import { useLibrary } from './library.jsx';
 
 const Ctx = createContext(null);
@@ -314,26 +315,23 @@ export function PlayerProvider({ children }) {
     playIndex(index);
   }, [playIndex]);
 
-  const addToQueue = useCallback((track) => {
+  /** "Add to queue" / "Play next". A song that is already queued is moved to just after the current one instead of being added twice. */
+  const queueAction = useCallback((track, mode) => {
     if (track.missing) return;
-    const item = withQid(track);
-    origOrder.current.push(item.qid);
     const { queue, index } = stRef.current;
-    commit({ ...stRef.current, queue: [...queue, item], index });
-    if (index < 0) playIndex(0, false);
-    libRef.current.toast(`Added “${track.title}” to the queue.`);
-  }, [playIndex]);
-
-  const playNext = useCallback((track) => {
-    if (track.missing) return;
     const item = withQid(track);
+    const r = queueAdd({ queue, index, item, mode });
+    const name = `“${track.title}”`;
+    if (r.action === 'current') { libRef.current.toast(`${name} is playing right now.`); return; }
+    if (r.action === 'already-next') { libRef.current.toast(`${name} is already next.`); return; }
+    if (r.action === 'moved') { commit({ ...stRef.current, queue: r.queue, index: r.index }); libRef.current.toast(`${name} was already in the queue — moved to play next.`); return; }
     origOrder.current.push(item.qid);
-    const { queue, index } = stRef.current;
-    const at = index + 1;
-    commit({ ...stRef.current, queue: [...queue.slice(0, at), item, ...queue.slice(at)], index });
+    commit({ ...stRef.current, queue: r.queue, index: r.index });
     if (index < 0) playIndex(0, false);
-    libRef.current.toast(`“${track.title}” will play next.`);
-  }, [playIndex]);
+    libRef.current.toast(r.action === 'next-added' ? `${name} will play next.` : `Added ${name} to the queue.`);
+  }, [playIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  const addToQueue = useCallback((track) => queueAction(track, 'end'), [queueAction]);
+  const playNext = useCallback((track) => queueAction(track, 'next'), [queueAction]);
 
   const removeFromQueue = useCallback((i) => {
     const { queue, index } = stRef.current;

@@ -123,7 +123,7 @@ export function findMatch(records, entry, taken = new Set()) {
   const pool = records.filter((r) => (r.kind === 'local' || r.kind === 'ghost') && !taken.has(r.id));
   const strong = pool.find((r) => r.fp && r.fp === entry.fp);
   if (strong) return strong;
-  return pool.find((r) => r.sigKey && r.sigKey === entry.sigKey && Math.abs((r.duration || 0) - (entry.duration || 0)) <= 2) || null;
+  return pool.find((r) => r.sigKey && r.sigKey === entry.sigKey && Math.abs((r.duration || 0) - (entry.duration || 0)) <= (r.tol || 2)) || null;
 }
 
 /* ---------- images ---------- */
@@ -285,4 +285,27 @@ export function dominantPalette(url, n = 4) {
     }));
   }
   return paletteCache.get(url);
+}
+
+/* ---------- duplicate songs ---------- */
+/** Same title + same first artist = the same song ("Mind over matter" ≠ "Mind over matter (remix)"). Unknown artist → the file name decides. */
+export function dupKeyOf(rec) {
+  const first = parseArtists(rec.artist)[0];
+  const title = norm(rec.title);
+  return first ? `${norm(first)}|${title}` : `~|${norm(String(rec.fileName || '').replace(/\.[^.]+$/, '')) || title}`;
+}
+
+/** Groups of duplicate songs: keep the best copy (a real file over a placeholder, then one with cover art, then the oldest). */
+export function findDuplicateGroups(records) {
+  const groups = new Map();
+  for (const r of records) {
+    if (r.kind !== 'local' && r.kind !== 'ghost') continue;
+    const k = dupKeyOf(r);
+    (groups.get(k) || groups.set(k, []).get(k)).push(r);
+  }
+  const rank = (r) => (r.kind === 'local' ? 0 : 1000000) + (r.art ? 0 : 100000) + (r.addedAt || 0) / 1e6;
+  return [...groups.values()].filter((g) => g.length > 1).map((g) => {
+    const sorted = g.slice().sort((a, b) => rank(a) - rank(b));
+    return { keep: sorted[0], drop: sorted.slice(1) };
+  });
 }

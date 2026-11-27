@@ -5,6 +5,7 @@ import { PlayerProvider, usePlayer } from './store/player.jsx';
 import PlayerBar from './components/PlayerBar.jsx';
 import SearchBox from './components/SearchBox.jsx';
 import EditDialog from './components/EditDialog.jsx';
+import { useMiniPlayer } from './components/MiniPlayer.jsx';
 import FullScreen from './components/FullScreen.jsx';
 import FullPanel from './components/FullPanel.jsx';
 import { prefersReduced } from './effects.js';
@@ -81,7 +82,10 @@ function Sidebar({ route, onNavigate, compact }) {
         ))}
       </ul>
       <div className="side-playlists">
-        <h3>Playlists</h3>
+        <div className="sp-head">
+          <h3>Playlists</h3>
+          <IconButton icon="plus" size={18} label="Create playlist" onClick={() => { const p = lib.createPlaylist(`Playlist ${lib.playlists.filter((x) => !x.system).length + 1}`); location.hash = `#/playlist/${p.id}`; onNavigate?.(); }} />
+        </div>
         {lib.playlists.length === 0 && <p className="muted small">Playlists you create appear here.</p>}
         {lib.playlists.map((p) => (
           <a key={p.id} href={`#/playlist/${p.id}`} onClick={onNavigate} title={p.name} className={route.name === 'playlist' && route.arg === p.id ? 'active' : ''}>
@@ -162,6 +166,8 @@ function Shell() {
   const [compact, setCompact] = useState(() => loadLayout().side < 150);
   const [dragging, setDragging] = useState('');
   const appRef = useRef(null);
+  const lib = useLibrary();
+  const mini = useMiniPlayer(lib.toast);
   const bd = useBackdrop(current);
 
   // Phones: tapping a tab (or any link) while the cover / full screen is open brings the player back to its mini form.
@@ -306,7 +312,8 @@ function Shell() {
       )}
       {fullSection === 'now' && <FullScreen onClose={closeFull} winFull={winFull} onToggleWindow={toggleWindowFullscreen} />}
       {full && fullSection !== 'now' && <FullPanel section={fullSection} onClose={closeFull} winFull={winFull} onToggleWindow={toggleWindowFullscreen} />}
-      <PlayerBar panel={panel} setPanel={setPanel} full={full} onFull={toggleBarFullscreen} fullSection={fullSection} onSection={setFullSection} />
+      <PlayerBar panel={panel} setPanel={setPanel} full={full} onFull={toggleBarFullscreen} fullSection={fullSection} onSection={setFullSection} onMini={mini.isOpen ? mini.close : mini.open} miniOpen={mini.isOpen} />
+      {mini.portal}
       <Toast />
       <EditDialog />
     </div>

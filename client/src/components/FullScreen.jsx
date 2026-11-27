@@ -53,7 +53,9 @@ export default function FullScreen({ onClose, winFull = false, onToggleWindow })
 
   return (
     <section className={`fs ${aurora ? 'aurora' : ''} ${immersive ? 'immersive' : ''}`} role="dialog" aria-label="Full screen player">
-      {aurora && <div className="fs-aurora" aria-hidden="true"><i /><i /><i /><i /></div>}
+      {aurora && (current?.cover
+        ? <div key={current.cover} className="fs-blur" aria-hidden="true" style={{ backgroundImage: `url("${current.cover}")` }} />
+        : <div className="fs-aurora" aria-hidden="true"><i /><i /><i /><i /></div>)}
       <header className="fs-head">
         <h2>{label || 'Now playing'}</h2>
         <div className="fs-actions">

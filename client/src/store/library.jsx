@@ -2,8 +2,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { idb, wipeDatabase } from '../idb.js';
 import { readTags } from '../tags.js';
-import { LIKED_COVER, LIKED_ID, UNKNOWN, albumKeyOf, artistInfo, artistKeyOf, findMatch, parseArtists, fpOf, groupTracks, norm, resizeImage, sigKeyOf } from '../util.js';
+import { LIKED_COVER, LIKED_ID, UNKNOWN, albumKeyOf, artistInfo, artistKeyOf, dupKeyOf, findDuplicateGroups, findMatch, parseArtists, fpOf, groupTracks, norm, resizeImage, sigKeyOf } from '../util.js';
 import { fetchOnline } from '../lyrics.js';
+import { findCoverBlob } from '../coverSearch.js';
+import { matchSpotifyTrack } from '../spotify.js';
 import { matchEntries, parsePlaylist } from '../m3u.js';
 import { dayKey } from '../recap.js';
 import { buildExport, parseExport, planImport } from './backup.js';
@@ -65,6 +67,7 @@ export function LibraryProvider({ children }) {
   const foldersRef = useRef([]);
   const dailyRef = useRef({});                      // per-day listening log for the recap
   const tracksRef = useRef([]);
+  const ignoredRef = useRef(new Set());             // fingerprints of duplicate files we skipped, so folder scans don't re-read them
   // Songs the user played from a search (newest first). Shown in the search bar instead of the typed queries.
   const [searchPlays, setSearchPlays] = useState(() => { try { return JSON.parse(localStorage.getItem('rune.searchPlays')) || []; } catch { return []; } });
 
@@ -112,6 +115,7 @@ export function LibraryProvider({ children }) {
         if (prof) setProfileState({ name: prof.name || '', username: prof.username || '', avatar: prof.avatar || null });
         statsRef.current = (await idb.get('kv', 'stats')) || {};
         dailyRef.current = (await idb.get('kv', 'daily')) || {};
+        ignoredRef.current = new Set((await idb.get('kv', 'ignoredFp')) || []);
         setStatsTick((n) => n + 1);
       } catch {
         toast('Storage is unavailable in this browser mode (private window?). Nothing will be saved.', 'error');
@@ -223,7 +227,9 @@ export function LibraryProvider({ children }) {
     const lrc = all.filter((f) => /\.lrc$/i.test(f.name));
     if (!audio.length && !lrc.length) { if (!quiet) toast('No audio files found in that selection.', 'error'); return 0; }
     let added = 0, skipped = 0, claimed = 0;
-    const have = new Set(Array.from(recMap.current.values()).filter((r) => r.kind === 'local').map((r) => r.fp));
+    const have = new Set([...Array.from(recMap.current.values()).filter((r) => r.kind === 'local').map((r) => r.fp), ...ignoredRef.current]);
+    const dupKeys = new Set(Array.from(recMap.current.values()).filter((r) => r.kind === 'local').map(dupKeyOf));
+    let ignoredDirty = false;
     for (const f of audio) {
       const fp = fpOf(f.name, f.size);
       if (have.has(fp)) { skipped++; continue; }
@@ -236,13 +242,21 @@ export function LibraryProvider({ children }) {
         const sigKey = sigKeyOf(title, artist);
         const lyr = tags.lyrics ? { source: 'file', raw: tags.lyrics } : null;
         // A faded placeholder from an imported backup? Fill it in so its info, cover, playlists and stats carry over.
-        const ghost = findMatch(Array.from(recMap.current.values()).filter((r) => r.kind === 'ghost'), { fp, sigKey, duration });
+        const dk = dupKeyOf({ title, artist, fileName: f.name });
+        const ghostRecs = Array.from(recMap.current.values()).filter((r) => r.kind === 'ghost');
+        const ghost = findMatch(ghostRecs, { fp, sigKey, duration }) || ghostRecs.find((g) => dupKeyOf(g) === dk);
         if (ghost) {
           await putRecord({ ...ghost, kind: 'local', blob: f, fileName: f.name, size: f.size, fp, duration: duration || ghost.duration, art: tags.art || ghost.art }, false);
           if (lyr) await saveLyrics(ghost.id, lyr);
           claimed++;
+          dupKeys.add(dk);
+        } else if (dupKeys.has(dk)) {
+          // Same title and artist as a song already in the library (e.g. the same file in two linked folders): keep just one.
+          skipped++; have.add(fp); ignoredRef.current.add(fp); ignoredDirty = true;
+          continue;
         } else {
           const id = `l:${uid()}`;
+          dupKeys.add(dk);
           await putRecord({
             id, kind: 'local', title, artist, albumArtist: tags.albumArtist || '', album: tags.album || '', trackNo: tags.trackNo || 0,
             duration, art: tags.art, fileName: f.name, size: f.size, fp, sigKey, addedAt: Date.now() + added, blob: f,
@@ -255,6 +269,7 @@ export function LibraryProvider({ children }) {
       } catch { toast(`Could not save “${f.name}”. Storage may be full.`, 'error'); }
     }
     refresh();
+    if (ignoredDirty) idb.put('kv', [...ignoredRef.current].slice(-5000), 'ignoredFp').catch(() => {});
     const lyrics = lrc.length ? await attachLrc(lrc, force) : 0;
     if (!quiet && (added || skipped || lyrics)) {
       toast([
@@ -277,7 +292,7 @@ export function LibraryProvider({ children }) {
       if (perm !== 'granted' && ask) perm = await entry.handle.requestPermission({ mode: 'read' });
       if (perm !== 'granted') { setFolderState(entry.id, { status: 'needs-permission' }); return 0; }
       setFolderState(entry.id, { status: 'scanning' });
-      const have = new Set(Array.from(recMap.current.values()).filter((r) => r.kind === 'local').map((r) => r.fp));
+      const have = new Set([...Array.from(recMap.current.values()).filter((r) => r.kind === 'local').map((r) => r.fp), ...ignoredRef.current]);
       const fresh = [], lrcs = [];
       const walk = async function* (dir, depth) {
         for await (const [name, h] of dir.entries()) {
@@ -555,6 +570,115 @@ export function LibraryProvider({ children }) {
     return { playlist, matched, missing, total: entries.length };
   }, [createPlaylist]);
 
+  /** Merges songs that are the same (same title + artist) into one, moving playlists, likes, stats, covers and lyrics to the kept copy. */
+  const mergeDuplicates = useCallback(async () => {
+    const groups = findDuplicateGroups(Array.from(recMap.current.values()));
+    if (!groups.length) return 0;
+    const remap = new Map();
+    const covers = { ...coversRef.current };
+    let coversChanged = false;
+    for (const { keep, drop } of groups) {
+      for (const d of drop) {
+        remap.set(d.id, keep.id);
+        const mine = (statsRef.current[keep.id] ||= { seconds: 0, plays: 0 }), theirs = statsRef.current[d.id];
+        if (theirs) { mine.seconds += theirs.seconds || 0; mine.plays += theirs.plays || 0; delete statsRef.current[d.id]; }
+        for (const day of Object.values(dailyRef.current)) {
+          if (day.songs?.[d.id]) { day.songs[keep.id] = (day.songs[keep.id] || 0) + day.songs[d.id]; delete day.songs[d.id]; }
+        }
+        const dc = covers[`song:${d.id}`];
+        if (dc !== undefined) {
+          if (covers[`song:${keep.id}`] === undefined) covers[`song:${keep.id}`] = dc; else if (dc !== 'none') release(dc);
+          delete covers[`song:${d.id}`]; coversChanged = true;
+        }
+        const lyr = await idb.get('lyrics', d.id).catch(() => null);
+        if (lyr && !(await idb.get('lyrics', keep.id).catch(() => null))) await idb.put('lyrics', { ...lyr, id: keep.id });
+        idb.del('lyrics', d.id).catch(() => {});
+        if (d.kind === 'local' && d.fp) ignoredRef.current.add(d.fp);
+        await idb.del('files', d.id);
+        recMap.current.delete(d.id);
+        release(d.art);
+      }
+    }
+    persistPlaylists(plRef.current.map((p) => ({ ...p, trackIds: [...new Set(p.trackIds.map((id) => remap.get(id) || id))] })));
+    if (coversChanged) persistCovers(covers);
+    idb.put('kv', [...ignoredRef.current].slice(-5000), 'ignoredFp').catch(() => {});
+    dirty.current = true; flushStats(); refresh();
+    return remap.size;
+  }, [persistPlaylists, release, flushStats, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+  const duplicateCount = useMemo(() => findDuplicateGroups(records).reduce((n, g) => n + g.drop.length, 0), [records]);
+  useEffect(() => {
+    if (!ready) return;
+    mergeDuplicates().then((n) => { if (n) toast(`Merged ${n} duplicate ${n === 1 ? 'song' : 'songs'} — each song now appears once.`); });
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Looks up cover art on the internet for songs and stores it as each song's cover. */
+  const findCoversOnline = useCallback(async (ids, { onlyMissing = true, onProgress, cancelled } = {}) => {
+    const tmap = new Map(tracksRef.current.map((t) => [t.id, t]));
+    const byAlbum = new Map();
+    let found = 0, missing = 0, skipped = 0, done = 0;
+    for (const id of ids) {
+      if (cancelled?.()) break;
+      const t = tmap.get(id);
+      let status = 'skipped';
+      if (!t || (onlyMissing && t.cover)) skipped++;
+      else {
+        const albumKey = t.album && t.albumArtistKey ? `${t.albumArtistKey}|${norm(t.album)}` : '';
+        let blob = albumKey ? byAlbum.get(albumKey) : null;
+        if (!blob) {
+          blob = await findCoverBlob({ title: t.title, artist: t.artist, imageUrl: recMap.current.get(id)?.imageUrl });
+          if (blob && albumKey) byAlbum.set(albumKey, blob);
+        }
+        status = 'missing';
+        if (blob) {
+          try { setCoverBlob('song', id, await resizeImage(blob)); found++; status = 'found'; } catch { /* unreadable image */ }
+        }
+        if (status === 'missing') missing++;
+      }
+      done++;
+      onProgress?.({ done, total: ids.length, id, status, title: t?.title || '' });
+    }
+    return { found, missing, skipped };
+  }, [setCoverBlob]);
+
+  /** Spotify playlists → Rune playlists. Songs you have are matched; the rest become faded placeholders until you add the files. */
+  const importSpotifyPlaylists = useCallback(async (playlists) => {
+    const songs = tracksRef.current, real = songs.filter((t) => !t.missing), faded = songs.filter((t) => t.missing);
+    const known = new Map(Array.from(recMap.current.values()).filter((r) => r.kind === 'ghost').map((r) => [dupKeyOf(r), r.id]));
+    const taken = new Set(plRef.current.map((p) => p.name.toLowerCase()));
+    let matched = 0, placeholders = 0;
+    const made = [], ghostIds = new Set();
+    for (const pl of playlists) {
+      const ids = [];
+      for (const sp of pl.tracks) {
+        let id = (matchSpotifyTrack(sp, real) || matchSpotifyTrack(sp, faded))?.id;
+        if (id) matched++;
+        else {
+          const dk = dupKeyOf({ title: sp.title, artist: sp.artist, fileName: '' });
+          id = known.get(dk);
+          if (!id) {
+            id = `l:${uid()}`;
+            const rec = {
+              id, kind: 'ghost', title: sp.title, artist: sp.artist || UNKNOWN, album: sp.album || '', trackNo: 0, duration: sp.duration || 0,
+              fileName: '', size: 0, fp: `spotify:${sp.uri || dk}`, sigKey: sigKeyOf(sp.title, sp.artist || UNKNOWN), art: null, imageUrl: sp.image || '', tol: 8, addedAt: Date.now() + placeholders,
+            };
+            await idb.put('files', rec);
+            recMap.current.set(id, rec);
+            known.set(dk, id);
+            placeholders++;
+          }
+          ghostIds.add(id);
+        }
+        if (!ids.includes(id)) ids.push(id);
+      }
+      let name = pl.name || 'Spotify playlist';
+      for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${pl.name} (${n})`;
+      taken.add(name.toLowerCase());
+      made.push(createPlaylist(name, ids));
+    }
+    refresh();
+    return { playlists: made, matched, placeholders, ghostIds: [...ghostIds] };
+  }, [createPlaylist, refresh]);
+
   // ---- delete everything Rune stores on this device ----
   const deleteEverything = useCallback(async () => {
     dirty.current = false;
@@ -590,6 +714,7 @@ export function LibraryProvider({ children }) {
     saveProfile, beginListen, recordListen, resetStats, deleteEverything,
     daily, getLyrics, saveLyrics, findLyricsOnline, lyricsOnline, setLyricsOnline, lyricsTick,
     supportsFolders, folders, linkFolder, allowFolder, rescanFolders, unlinkFolder, importPlaylistFile,
+    mergeDuplicates, duplicateCount, findCoversOnline, importSpotifyPlaylists,
   }), [ready, tracks, byId, videos, playlists, groups, profile, avatarUrl, stats, notice, editing, coverBlobs, searchPlays, stats, daily, lyricsOnline, lyricsTick, folders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

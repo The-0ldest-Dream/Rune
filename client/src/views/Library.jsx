@@ -4,6 +4,9 @@ import { useLibrary } from '../store/library.jsx';
 import { usePlayer } from '../store/player.jsx';
 import { KindCover } from '../components/EditDialog.jsx';
 import { buildM3U } from '../m3u.js';
+import AddSongsDialog from '../components/AddSongsDialog.jsx';
+import CoverFetchDialog from '../components/CoverFetchDialog.jsx';
+import SpotifyImport from '../components/SpotifyImport.jsx';
 import { Cover, Icon, Status, TrackList } from '../components/ui.jsx';
 
 function download(name, text) {
@@ -17,6 +20,7 @@ function download(name, text) {
 export function PlaylistsPage() {
   const lib = useLibrary();
   const importInput = useRef(null);
+  const [spotify, setSpotify] = useState(false);
   const importFile = async (file) => {
     try {
       const r = await lib.importPlaylistFile(file);
@@ -29,12 +33,14 @@ export function PlaylistsPage() {
       <div className="section-head">
         <h1>Your playlists</h1>
         <div className="row">
+        <button className="btn ghost" onClick={() => setSpotify(true)}><Icon name="download" size={16} /> Import from Spotify</button>
         <button className="btn ghost" onClick={() => importInput.current.click()}><Icon name="upload" size={16} /> Import M3U</button>
         <input ref={importInput} type="file" accept=".m3u,.m3u8,.pls,audio/x-mpegurl,audio/mpegurl,text/plain" hidden onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importFile(f); }} />
         <button className="btn" onClick={() => { location.hash = `#/playlist/${lib.createPlaylist(`Playlist ${lib.playlists.filter((x) => !x.system).length + 1}`).id}`; }}>
           <Icon name="plus" size={16} /> New playlist
         </button>
         </div>
+        {spotify && <SpotifyImport onClose={() => setSpotify(false)} />}
       </div>
       <p className="muted">Playlists are stored in this browser and work offline. Clearing your browser data removes them.</p>
       {lib.playlists.length === 0
@@ -59,6 +65,7 @@ export function PlaylistPage({ id }) {
   const { playQueue } = usePlayer();
   const p = lib.playlists.find((x) => x.id === id);
   const [name, setName] = useState(null);
+  const [adding, setAdding] = useState(false);
   if (!p) return <Status empty emptyText={lib.ready ? 'This playlist doesn’t exist on this device.' : 'Loading…'} />;
 
   const commit = () => { if (name !== null) lib.renamePlaylist(p.id, name); setName(null); };
@@ -75,6 +82,7 @@ export function PlaylistPage({ id }) {
       </header>
       <div className="actions">
         <button className="play-btn big" aria-label="Play playlist" disabled={!p.tracks.length} onClick={() => playQueue(p.tracks, 0, p.name)}><Icon name="play" size={28} /></button>
+        <button className="btn" onClick={() => setAdding(true)}><Icon name="plus" size={16} /> Add songs</button>
         <button className="btn ghost" disabled={!p.tracks.length} onClick={() => download(`${p.name.replace(/[\\/:*?"<>|]/g, '_')}.m3u8`, buildM3U(p.name, p.tracks))}>
           <Icon name="download" size={16} /> Export M3U
         </button>
@@ -84,6 +92,7 @@ export function PlaylistPage({ id }) {
           </button>
         )}
       </div>
+      {adding && <AddSongsDialog playlistId={p.id} onClose={() => setAdding(false)} />}
       <TrackList tracks={p.tracks} label={p.name} onRemove={(i) => lib.removeFromPlaylist(p.id, i)} removeLabel="Remove from playlist"
         emptyText={p.system ? 'No liked songs yet. Tap the heart next to a song’s name to save it here.' : 'This playlist is empty. Add songs from any song’s ⋯ menu.'} />
     </>
@@ -98,6 +107,7 @@ export function LocalPage() {
   const [over, setOver] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState(new Set());
+  const [covers, setCovers] = useState(null);
 
   const unknown = lib.tracks.filter((t) => !t.artistKey);
   const toggle = (id) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -110,6 +120,7 @@ export function LocalPage() {
         <h1>Device files</h1>
         <div className="row">
           <a className="icon-btn mobile-only" href="#/videos" aria-label="Upload music videos" title="Upload music videos"><Icon name="video" size={22} /></a>
+          {lib.duplicateCount > 0 && !selecting && <button className="btn ghost" onClick={async () => { const n = await lib.mergeDuplicates(); lib.toast(`Merged ${n} duplicate ${n === 1 ? 'song' : 'songs'}.`); }}>Remove {lib.duplicateCount} duplicate{lib.duplicateCount === 1 ? '' : 's'}</button>}
           {lib.tracks.length > 0 && !selecting && <button className="btn ghost" onClick={() => setSelecting(true)}>Select</button>}
           {lib.tracks.length > 0 && !selecting && <button className="btn" onClick={() => playQueue(lib.tracks, 0, 'Device files')}><Icon name="play" size={16} /> Play all</button>}
         </div>
@@ -164,6 +175,7 @@ export function LocalPage() {
           <strong>{ids.length} selected</strong>
           <button className="btn ghost" onClick={() => setSelected(new Set(lib.tracks.map((t) => t.id)))}>Select all</button>
           <button className="btn" disabled={!ids.length} onClick={() => { lib.openEdit(ids); stop(); }}><Icon name="edit" size={16} /> Edit info</button>
+          <button className="btn ghost" disabled={!ids.length} onClick={() => setCovers(ids)}><Icon name="image" size={16} /> Find covers online</button>
           <button className="btn ghost danger" disabled={!ids.length}
             onClick={() => { if (confirm(`Remove ${ids.length} song(s) from your library?`)) { ids.forEach((id) => lib.removeFile(id)); stop(); } }}>
             <Icon name="trash" size={16} /> Remove
@@ -172,6 +184,7 @@ export function LocalPage() {
         </div>
       )}
 
+      {covers && <CoverFetchDialog ids={covers} onClose={() => setCovers(null)} />}
       <TrackList tracks={lib.tracks} label="Device files" selectable={selecting} selected={selected} onToggle={toggle}
         onRemove={(i) => lib.removeFile(lib.tracks[i].id)} removeLabel="Remove from library" emptyText="No songs yet — add some above." />
     </>
